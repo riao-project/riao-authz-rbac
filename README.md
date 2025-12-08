@@ -230,12 +230,12 @@ const result = await rbac.evaluate({
 - If a resource is provided: Match permissions with the exact resource OR permissions with `resource: null`
 - If no resource is provided: Only match permissions with `resource: null`
 
-##### `isAuthorized(principal: Principal, action: string, resource?: string): Promise<boolean>`
+##### `isAuthorized(context: { principal: Principal, action: string, resource?: string }): Promise<boolean>`
 
 Convenience method that calls `evaluate()` and returns only the boolean result.
 
 ```typescript
-if (await rbac.isAuthorized(user, 'delete', 'users')) {
+if (await rbac.isAuthorized({ principal: user, action: 'delete', resource: 'users' })) {
 	// User can delete users
 }
 ```
@@ -316,7 +316,7 @@ rbac.principalRolesRepo		 // QueryRepository<RbacPrincipalRole>
 const rbac = new RbacAuthorization({ db });
 
 // Check if user can read documents
-if (await rbac.isAuthorized(user, 'read', 'documents')) {
+if (await rbac.isAuthorized({ principal: user, action: 'read', resource: 'documents' })) {
 	// Allow access
 }
 ```
@@ -327,12 +327,12 @@ A principal can have multiple roles with different permissions:
 
 ```typescript
 // Principal has both "editor" and "reviewer" roles
-await rbac.grantPermission(userId, 'write', 'articles');	// editor
-await rbac.grantPermission(userId, 'approve');						 // reviewer
+await rbac.grantPermission({ principalId: userId, action: 'write', resource: 'articles' });	// editor
+await rbac.grantPermission({ principalId: userId, action: 'approve' });						 // reviewer
 
 // Has access through either role
-await rbac.isAuthorized(user, 'write', 'articles');	// true
-await rbac.isAuthorized(user, 'approve');						 // true
+await rbac.isAuthorized({ principal: user, action: 'write', resource: 'articles' });	// true
+await rbac.isAuthorized({ principal: user, action: 'approve' });						 // true
 ```
 
 ### Hierarchical Permissions
@@ -341,12 +341,12 @@ Implement permission hierarchies using naming conventions:
 
 ```typescript
 // Define related permissions
-await rbac.grantPermission(userId, 'read', 'documents');
-await rbac.grantPermission(userId, 'read', 'reports');
-await rbac.grantPermission(userId, 'read', 'analytics');
+await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'documents' });
+await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'reports' });
+await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'analytics' });
 
 // Check specific permissions
-await rbac.isAuthorized(user, 'read', 'documents');	// true
+await rbac.isAuthorized({ principal: user, action: 'read', resource: 'documents' });	// true
 ```
 
 ### Temporary Access
@@ -355,10 +355,10 @@ Grant access temporarily and revoke it later:
 
 ```typescript
 // Grant temporary access
-await rbac.grantPermission(userId, 'export', 'data');
+await rbac.grantPermission({ principalId: userId, action: 'export', resource: 'data' });
 
 // Later, revoke the access
-await rbac.revokePermission(userId, 'export');
+await rbac.revokePermission({ principalId: userId, action: 'export' });
 ```
 
 ### Action-Only Permissions
@@ -367,13 +367,13 @@ For permissions that don't require a resource scope:
 
 ```typescript
 // Grant action-only permission
-await rbac.grantPermission(userId, 'logout');
-await rbac.grantPermission(userId, 'change-password');
-await rbac.grantPermission(userId, 'view-profile');
+await rbac.grantPermission({ principalId: userId, action: 'logout' });
+await rbac.grantPermission({ principalId: userId, action: 'change-password' });
+await rbac.grantPermission({ principalId: userId, action: 'view-profile' });
 
 // Check authorization
-await rbac.isAuthorized(user, 'logout');							// true
-await rbac.isAuthorized(user, 'logout', 'resource');	// true (null resource matches any)
+await rbac.isAuthorized({ principal: user, action: 'logout' });							// true
+await rbac.isAuthorized({ principal: user, action: 'logout', resource: 'resource' });	// true (null resource matches any)
 ```
 
 ## Contributing & Development
