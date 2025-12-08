@@ -1085,7 +1085,7 @@ describe('RBAC Authorization', () => {
 		});
 
 		it(
-			'should handle multiple permissions where additional  ' +
+			'should handle multiple permissions where additional ' +
 				'exist but have no role assignments',
 			async () => {
 				const action = 'nocov_' + Date.now();
