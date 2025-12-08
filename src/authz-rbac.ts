@@ -1,5 +1,6 @@
 import { DatabaseRecordId, QueryRepository } from '@riao/dbal';
 import { KeyValExpression } from '@riao/dbal/expression/key-val-expression';
+import { inArray } from '@riao/dbal/comparison';
 import {
 	Authorization,
 	AuthorizationContext,
@@ -327,14 +328,14 @@ export class RbacAuthorization extends Authorization<Principal> {
 		// Get permission IDs to check
 		const permissionIds = matchingPermissions.map((p) => p.id);
 
-		// Check if any role has any of these permissions
+		// Check if any role has any of these permissions using IN clause
 		const rolePermissions = await this.rolePermissionsRepo.find({
 			where: {
-				permission_id: permissionIds[0], // Start with first permission
+				permission_id: inArray(permissionIds),
 			} as KeyValExpression<RbacRolePermission>,
 		});
 
-		if (rolePermissions.length === 0) {
+		if (!rolePermissions || rolePermissions.length === 0) {
 			return false;
 		}
 
@@ -342,23 +343,6 @@ export class RbacAuthorization extends Authorization<Principal> {
 		const rolePermissionMap = new Set(
 			rolePermissions.map((rp) => rp.role_id)
 		);
-
-		// If there are more permissions, fetch them too
-		if (permissionIds.length > 1) {
-			for (let i = 1; i < permissionIds.length; i++) {
-				const additionalPerms = await this.rolePermissionsRepo.find({
-					where: {
-						permission_id: permissionIds[i],
-					} as KeyValExpression<RbacRolePermission>,
-				});
-
-				if (additionalPerms) {
-					additionalPerms.forEach((rp) =>
-						rolePermissionMap.add(rp.role_id)
-					);
-				}
-			}
-		}
 
 		// Check if any of the requested roles have permission
 		return roleIds.some((roleId) => rolePermissionMap.has(roleId));
