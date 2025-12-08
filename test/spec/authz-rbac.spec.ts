@@ -1085,7 +1085,7 @@ describe('RBAC Authorization', () => {
 		});
 
 		it(
-			'should handle multiple permissions where additional  ' +
+			'should handle multiple permissions where additional ' +
 				'exist but have no role assignments',
 			async () => {
 				const action = 'nocov_' + Date.now();
@@ -1128,7 +1128,7 @@ describe('RBAC Authorization', () => {
 				});
 				const roleId = (roleInserted as unknown as { id: string }).id;
 
-				// Assign only first permission to role '
+				// Assign only first permission to role
 				// 	(second and third have no assignment)
 				await rolePermissionsRepo.insertOne({
 					record: {
