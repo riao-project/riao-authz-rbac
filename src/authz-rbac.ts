@@ -1,9 +1,10 @@
-import { Database, DatabaseRecordId, QueryRepository } from '@riao/dbal';
+import { DatabaseRecordId, QueryRepository } from '@riao/dbal';
 import { KeyValExpression } from '@riao/dbal/expression/key-val-expression';
 import {
 	Authorization,
 	AuthorizationContext,
 	AuthorizationResult,
+	AuthorizationOptions,
 } from '@riao/iam/authorization';
 import { Principal } from '@riao/iam/auth';
 
@@ -38,9 +39,7 @@ export interface RbacPrincipalRole {
 	deactivate_timestamp?: Date;
 }
 
-export interface RbacAuthorizationOptions {
-	db: Database;
-}
+export type RbacAuthorizationOptions = AuthorizationOptions;
 
 export interface GrantPermissionOptions {
 	principalId: DatabaseRecordId;
