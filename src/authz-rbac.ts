@@ -1,0 +1,378 @@
+import {
+	and,
+	DatabaseRecordId,
+	Expression,
+	inArray,
+	or,
+	QueryRepository,
+	SelectQuery,
+} from '@riao/dbal';
+import { KeyValExpression } from '@riao/dbal/expression/key-val-expression';
+import {
+	Authorization,
+	AuthorizationContext,
+	AuthorizationResult,
+	AuthorizationOptions,
+} from '@riao/iam/authorization';
+import { Principal } from '@riao/iam/auth';
+import { identifier } from '@riao/dbal/expression/identifier';
+
+export interface RbacRole {
+	id: DatabaseRecordId;
+	name: string;
+	description?: string;
+	create_timestamp: Date;
+	deactivate_timestamp?: Date;
+}
+
+export interface RbacPermission {
+	id: DatabaseRecordId;
+	action: string;
+	resource: string | null;
+	description?: string;
+	create_timestamp: Date;
+}
+
+export interface RbacRolePermission {
+	id: DatabaseRecordId;
+	role_id: DatabaseRecordId;
+	permission_id: DatabaseRecordId;
+	create_timestamp: Date;
+}
+
+export interface RbacPrincipalRole {
+	id: DatabaseRecordId;
+	principal_id: DatabaseRecordId;
+	role_id: DatabaseRecordId;
+	create_timestamp: Date;
+	deactivate_timestamp?: Date;
+}
+
+export type RbacAuthorizationOptions = AuthorizationOptions;
+
+export interface GrantPermissionOptions {
+	principalId: DatabaseRecordId;
+	action: string;
+	resource?: string;
+}
+
+export interface RevokePermissionOptions {
+	principalId: DatabaseRecordId;
+	action: string;
+}
+
+export interface CheckRolesHavePermissionContext {
+	roleIds: DatabaseRecordId[];
+	action: string;
+	resource?: string;
+}
+
+/**
+ * Role-Based Access Control (RBAC) implementation of Authorization
+ * RBAC uses roles as an intermediary between principals and permissions
+ * Evaluation flow: Principal -> Roles -> Permissions -> Authorization decision
+ */
+export class RbacAuthorization extends Authorization<Principal> {
+	public rolesRepo: QueryRepository<RbacRole>;
+	public permissionsRepo: QueryRepository<RbacPermission>;
+	public rolePermissionsRepo: QueryRepository<RbacRolePermission>;
+	public principalRolesRepo: QueryRepository<RbacPrincipalRole>;
+
+	public constructor(options: RbacAuthorizationOptions) {
+		// Call parent constructor with required db property
+		super({ db: options.db });
+
+		// Initialize repositories for RBAC tables
+		this.rolesRepo = options.db.getQueryRepository<RbacRole>({
+			table: 'iam_rbac_roles',
+			identifiedBy: 'id',
+		});
+
+		this.permissionsRepo = options.db.getQueryRepository<RbacPermission>({
+			table: 'iam_rbac_permissions',
+			identifiedBy: 'id',
+		});
+
+		this.rolePermissionsRepo =
+			options.db.getQueryRepository<RbacRolePermission>({
+				table: 'iam_rbac_role_permissions',
+				identifiedBy: 'id',
+			});
+
+		this.principalRolesRepo =
+			options.db.getQueryRepository<RbacPrincipalRole>({
+				table: 'iam_rbac_principal_roles',
+				identifiedBy: 'id',
+			});
+	}
+
+	/**
+	 * Evaluate authorization using RBAC model
+	 * Checks if principal has a role that contains the required permission
+	 * @param context The authorization context
+	 * @returns Authorization result
+	 */
+	public async evaluate(
+		context: AuthorizationContext<Principal>
+	): Promise<AuthorizationResult> {
+		try {
+			// Get all active roles for the principal
+			// TODO: This may be optimized by joining?
+			// TODO: Caching?
+			const principalRoles = await this.getPrincipalActiveRoles(
+				context.principal.id
+			);
+
+			if (principalRoles.length === 0) {
+				return {
+					allowed: false,
+					reason: 'Principal has no active roles',
+				};
+			}
+
+			// Check if any role has the required permission
+			const roleIds = principalRoles.map((pr) => pr.role_id);
+			const hasPermission = await this.checkRolesHavePermission({
+				roleIds,
+				action: context.action,
+				resource: context.resource as string | undefined,
+			});
+
+			if (hasPermission) {
+				return {
+					allowed: true,
+				};
+			}
+
+			return {
+				allowed: false,
+				reason: 'Principal roles do not have required permission',
+			};
+		}
+		catch (error) {
+			return {
+				allowed: false,
+				reason:
+					'Authorization evaluation error: ' +
+					(error instanceof Error ? error.message : String(error)),
+			};
+		}
+	}
+
+	/**
+	 * Grant a permission to a principal by assigning a role
+	 * In RBAC, permissions are granted through role assignment
+	 * @param options The grant permission options
+	 */
+	public async grantPermission(
+		options: GrantPermissionOptions
+	): Promise<void> {
+		const { principalId, action, resource } = options;
+
+		// Find or create role by action name
+		const role = await this.rolesRepo.findOne({
+			where: { name: action } as KeyValExpression<RbacRole>,
+		});
+
+		let roleId: DatabaseRecordId;
+		if (role) {
+			roleId = role.id;
+		}
+		else {
+			// Create role if it doesn't exist
+			const { id } = await this.rolesRepo.insertOne({
+				record: {
+					name: action,
+					description: `Role for ${action} action`,
+					create_timestamp: new Date(),
+				} as unknown as RbacRole,
+			});
+
+			roleId = id!;
+		}
+
+		// Find or create permission for this action
+		const permission = await this.permissionsRepo.findOne({
+			where: {
+				action,
+				resource: resource || null,
+			} as KeyValExpression<RbacPermission>,
+		});
+
+		let permissionId: DatabaseRecordId;
+		if (permission) {
+			permissionId = permission.id;
+		}
+		else {
+			// Create permission if it doesn't exist
+			const { id } = await this.permissionsRepo.insertOne({
+				record: {
+					action,
+					resource: resource || null,
+					create_timestamp: new Date(),
+				} as unknown as RbacPermission,
+			});
+
+			permissionId = id!;
+		}
+
+		// Assign permission to role
+		await this.rolePermissionsRepo.insertOne({
+			record: {
+				role_id: roleId,
+				permission_id: permissionId,
+				create_timestamp: new Date(),
+			} as unknown as RbacRolePermission,
+		});
+
+		// Check if principal-role assignment already exists
+		// (both active and deactivated)
+		const existingAssignment = await this.principalRolesRepo.findOne({
+			where: {
+				principal_id: principalId,
+				role_id: roleId,
+			} as KeyValExpression<RbacPrincipalRole>,
+		});
+
+		if (existingAssignment) {
+			// If assignment exists but is deactivated, reactivate it
+			if (existingAssignment.deactivate_timestamp) {
+				await this.principalRolesRepo.update({
+					set: { deactivate_timestamp: undefined },
+					where: { id: existingAssignment.id },
+				});
+			}
+			// If assignment is already active, no action needed
+		}
+		else {
+			// Create new assignment if it doesn't exist
+			await this.principalRolesRepo.insertOne({
+				record: {
+					principal_id: principalId,
+					role_id: roleId,
+				} as unknown as RbacPrincipalRole,
+			});
+		}
+	}
+
+	/**
+	 * Revoke a permission from a principal
+	 * In RBAC, permissions are revoked by deactivating role assignment
+	 * @param options The revoke permission options
+	 */
+	public async revokePermission(
+		options: RevokePermissionOptions
+	): Promise<void> {
+		const { principalId, action } = options;
+		// Find role by action name
+		const role = await this.rolesRepo.findOne({
+			where: { name: action } as KeyValExpression<RbacRole>,
+		});
+
+		if (!role) {
+			return; // Role doesn't exist, nothing to revoke
+		}
+
+		const roleId = role.id;
+
+		// Find principal's role assignment
+		const assignment = await this.principalRolesRepo.findOne({
+			where: {
+				principal_id: principalId,
+				role_id: roleId,
+			} as KeyValExpression<RbacPrincipalRole>,
+		});
+
+		if (assignment) {
+			// Deactivate the assignment
+			await this.principalRolesRepo.update({
+				set: {
+					deactivate_timestamp: new Date(),
+				} as Partial<RbacPrincipalRole>,
+				where: {
+					id: assignment.id,
+				} as KeyValExpression<RbacPrincipalRole>,
+			});
+		}
+	}
+
+	/**
+	 * Get all active roles for a principal
+	 * @param principalId The principal ID
+	 * @returns Array of active role assignments
+	 */
+	private async getPrincipalActiveRoles(
+		principalId: DatabaseRecordId
+	): Promise<RbacPrincipalRole[]> {
+		const assignments = await this.principalRolesRepo.find({
+			where: {
+				principal_id: principalId,
+				deactivate_timestamp: null,
+			} as KeyValExpression<RbacPrincipalRole>,
+		});
+
+		return assignments;
+	}
+
+	/**
+	 * Check if any of the given roles have the required permission
+	 * Uses a single optimized query with joins instead of N+1 queries
+	 * @param context The check context containing roleIds, action,
+	 * 	and optional resource
+	 * @returns True if at least one role has the permission
+	 */
+	private async checkRolesHavePermission(
+		context: CheckRolesHavePermissionContext
+	): Promise<boolean> {
+		const { roleIds, action, resource } = context;
+		const query: SelectQuery<RbacRolePermission> = {
+			table: 'iam_rbac_role_permissions',
+			join: [
+				{
+					type: 'INNER',
+					table: 'iam_rbac_permissions',
+					on: {
+						'iam_rbac_permissions.id': identifier(
+							'iam_rbac_role_permissions.permission_id'
+						),
+					},
+				},
+			],
+			where: [
+				{ 'iam_rbac_permissions.action': action },
+				and,
+				{
+					'iam_rbac_role_permissions.role_id': inArray(roleIds),
+				} as Expression,
+			] as Expression,
+		};
+
+		if (resource) {
+			// If resource is specified, add condition for matching
+			// 	resource or global on resource type (null)
+			(query.where! as Expression[]).push(
+				...[
+					and,
+					[
+						{ 'iam_rbac_permissions.resource': resource },
+						or,
+						{ 'iam_rbac_permissions.resource': null },
+					],
+				]
+			);
+		}
+		else {
+			// If no resource specified, only match global permissions
+			(query.where! as Expression[]).push(
+				...[and, { 'iam_rbac_permissions.resource': null }]
+			);
+		}
+
+		// Execute the query to get all role-permissions matching
+		// the criteria and the requested roleIds in a single database call
+		const rolePermissions = await this.rolePermissionsRepo.find(query);
+
+		// Return true if any matching role-permissions were found
+		return rolePermissions && rolePermissions.length > 0;
+	}
+}

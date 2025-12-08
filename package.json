@@ -1,7 +1,7 @@
 {
-	"name": "authz-rbac",
+	"name": "@riao/authz-rbac",
 	"version": "1.0.0",
-	"description": "authz-rbac",
+	"description": "Riao RBAC",
 	"private": "true",
 	"typescript-template": {
 		"base": "1.0.1",
@@ -23,7 +23,7 @@
 	},
 	"dependencies": {
 		"@riao/dbal": "^3.8.0",
-		"@riao/iam": "^3.0.0"
+		"@riao/iam": "^3.2.0"
 	},
 	"devDependencies": {
 		"@istanbuljs/nyc-config-typescript": "^1.0.2",
@@ -47,13 +47,20 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/authz-rbac/authz-rbac.git"
+		"url": "git+https://github.com/riao-project/authz-rbac.git"
 	},
-	"author": "authz-rbac",
+	"author": "riao-project",
 	"license": "MIT",
 	"bugs": {
-		"url": "https://github.com/authz-rbac/authz-rbac/issues"
+		"url": "https://github.com/riao-project/authz-rbac/issues"
 	},
-	"homepage": "https://github.com/authz-rbac/authz-rbac#readme",
-	"keywords": []
+	"homepage": "https://github.com/riao-project/authz-rbac#readme",
+	"keywords": [
+		"riao",
+		"rbac",
+		"authz",
+		"authorization",
+		"access-control",
+		"role-based-access-control"
+	]
 }
