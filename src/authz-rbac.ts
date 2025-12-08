@@ -335,7 +335,7 @@ export class RbacAuthorization extends Authorization<Principal> {
 			} as KeyValExpression<RbacRolePermission>,
 		});
 
-		if (!rolePermissions || rolePermissions.length === 0) {
+		if (rolePermissions.length === 0) {
 			return false;
 		}
 
