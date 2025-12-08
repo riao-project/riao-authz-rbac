@@ -327,8 +327,8 @@ A principal can have multiple roles with different permissions:
 
 ```typescript
 // Principal has both "editor" and "reviewer" roles
-await rbac.grantPermission(userId, 'write', 'articles');	// editor
-await rbac.grantPermission(userId, 'approve');						 // reviewer
+await rbac.grantPermission({ principalId: userId, action: 'write', resource: 'articles' });	// editor
+await rbac.grantPermission({ principalId: userId, action: 'approve' });						 // reviewer
 
 // Has access through either role
 await rbac.isAuthorized(user, 'write', 'articles');	// true
@@ -341,9 +341,9 @@ Implement permission hierarchies using naming conventions:
 
 ```typescript
 // Define related permissions
-await rbac.grantPermission(userId, 'read', 'documents');
-await rbac.grantPermission(userId, 'read', 'reports');
-await rbac.grantPermission(userId, 'read', 'analytics');
+await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'documents' });
+await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'reports' });
+await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'analytics' });
 
 // Check specific permissions
 await rbac.isAuthorized(user, 'read', 'documents');	// true
@@ -355,10 +355,10 @@ Grant access temporarily and revoke it later:
 
 ```typescript
 // Grant temporary access
-await rbac.grantPermission(userId, 'export', 'data');
+await rbac.grantPermission({ principalId: userId, action: 'export', resource: 'data' });
 
 // Later, revoke the access
-await rbac.revokePermission(userId, 'export');
+await rbac.revokePermission({ principalId: userId, action: 'export' });
 ```
 
 ### Action-Only Permissions
@@ -367,9 +367,9 @@ For permissions that don't require a resource scope:
 
 ```typescript
 // Grant action-only permission
-await rbac.grantPermission(userId, 'logout');
-await rbac.grantPermission(userId, 'change-password');
-await rbac.grantPermission(userId, 'view-profile');
+await rbac.grantPermission({ principalId: userId, action: 'logout' });
+await rbac.grantPermission({ principalId: userId, action: 'change-password' });
+await rbac.grantPermission({ principalId: userId, action: 'view-profile' });
 
 // Check authorization
 await rbac.isAuthorized(user, 'logout');							// true
