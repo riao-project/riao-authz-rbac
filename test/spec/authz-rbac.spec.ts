@@ -1128,7 +1128,7 @@ describe('RBAC Authorization', () => {
 				});
 				const roleId = (roleInserted as unknown as { id: string }).id;
 
-				// Assign only first permission to role '
+				// Assign only first permission to role
 				// 	(second and third have no assignment)
 				await rolePermissionsRepo.insertOne({
 					record: {
