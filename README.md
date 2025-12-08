@@ -85,14 +85,14 @@ Check if a principal is authorized for an action:
 
 ```typescript
 // Check with a specific resource
-const isAuthorized = await rbac.isAuthorized(
+const isAuthorized = await rbac.isAuthorized({
 	principal,
-	'read',
-	'documents'
-);
+	action: 'read',
+	resource: 'documents'
+});
 
 // Check without a resource (for action-only permissions)
-const canLogout = await rbac.isAuthorized(principal, 'logout');
+const canLogout = await rbac.isAuthorized({ principal, action: 'logout' });
 
 // Full evaluation with metadata
 const result = await rbac.evaluate({
