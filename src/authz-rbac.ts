@@ -208,14 +208,34 @@ export class RbacAuthorization extends Authorization<Principal> {
 			} as unknown as RbacRolePermission,
 		});
 
-		// Assign role to principal
-		await this.principalRolesRepo.insertOne({
-			record: {
+		// Check if principal-role assignment already exists
+		// (both active and deactivated)
+		const existingAssignment = await this.principalRolesRepo.findOne({
+			where: {
 				principal_id: principalId,
 				role_id: roleId,
-				create_timestamp: new Date(),
-			} as unknown as RbacPrincipalRole,
+			} as KeyValExpression<RbacPrincipalRole>,
 		});
+
+		if (existingAssignment) {
+			// If assignment exists but is deactivated, reactivate it
+			if (existingAssignment.deactivate_timestamp) {
+				await this.principalRolesRepo.update({
+					set: { deactivate_timestamp: undefined },
+					where: { id: existingAssignment.id },
+				});
+			}
+			// If assignment is already active, no action needed
+		}
+		else {
+			// Create new assignment if it doesn't exist
+			await this.principalRolesRepo.insertOne({
+				record: {
+					principal_id: principalId,
+					role_id: roleId,
+				} as unknown as RbacPrincipalRole,
+			});
+		}
 	}
 
 	/**
