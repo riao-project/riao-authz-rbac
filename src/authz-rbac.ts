@@ -1,4 +1,12 @@
-import { DatabaseRecordId, QueryRepository } from '@riao/dbal';
+import {
+	and,
+	DatabaseRecordId,
+	Expression,
+	inArray,
+	or,
+	QueryRepository,
+	SelectQuery,
+} from '@riao/dbal';
 import { KeyValExpression } from '@riao/dbal/expression/key-val-expression';
 import {
 	Authorization,
@@ -7,6 +15,7 @@ import {
 	AuthorizationOptions,
 } from '@riao/iam/authorization';
 import { Principal } from '@riao/iam/auth';
+import { identifier } from '@riao/dbal/expression/identifier';
 
 export interface RbacRole {
 	id: DatabaseRecordId;
@@ -50,6 +59,12 @@ export interface GrantPermissionOptions {
 export interface RevokePermissionOptions {
 	principalId: DatabaseRecordId;
 	action: string;
+}
+
+export interface CheckRolesHavePermissionContext {
+	roleIds: DatabaseRecordId[];
+	action: string;
+	resource?: string;
 }
 
 /**
@@ -102,6 +117,8 @@ export class RbacAuthorization extends Authorization<Principal> {
 	): Promise<AuthorizationResult> {
 		try {
 			// Get all active roles for the principal
+			// TODO: This may be optimized by joining?
+			// TODO: Caching?
 			const principalRoles = await this.getPrincipalActiveRoles(
 				context.principal.id
 			);
@@ -115,11 +132,11 @@ export class RbacAuthorization extends Authorization<Principal> {
 
 			// Check if any role has the required permission
 			const roleIds = principalRoles.map((pr) => pr.role_id);
-			const hasPermission = await this.checkRolesHavePermission(
+			const hasPermission = await this.checkRolesHavePermission({
 				roleIds,
-				context.action,
-				context.resource as string | undefined
-			);
+				action: context.action,
+				resource: context.resource as string | undefined,
+			});
 
 			if (hasPermission) {
 				return {
@@ -299,79 +316,63 @@ export class RbacAuthorization extends Authorization<Principal> {
 
 	/**
 	 * Check if any of the given roles have the required permission
-	 * @param roleIds Array of role IDs
-	 * @param action The required action
-	 * @param resource Optional resource identifier
+	 * Uses a single optimized query with joins instead of N+1 queries
+	 * @param context The check context containing roleIds, action,
+	 * 	and optional resource
 	 * @returns True if at least one role has the permission
 	 */
 	private async checkRolesHavePermission(
-		roleIds: DatabaseRecordId[],
-		action: string,
-		resource?: string
+		context: CheckRolesHavePermissionContext
 	): Promise<boolean> {
-		// Get all permissions for this action
-		const permissions = await this.permissionsRepo.find({
-			where: {
-				action,
-			} as KeyValExpression<RbacPermission>,
-		});
-
-		if (!permissions || permissions.length === 0) {
-			return false;
-		}
-
-		// Filter permissions based on resource matching
-		let matchingPermissions: RbacPermission[];
+		const { roleIds, action, resource } = context;
+		const query: SelectQuery<RbacRolePermission> = {
+			table: 'iam_rbac_role_permissions',
+			join: [
+				{
+					type: 'INNER',
+					table: 'iam_rbac_permissions',
+					on: {
+						'iam_rbac_permissions.id': identifier(
+							'iam_rbac_role_permissions.permission_id'
+						),
+					},
+				},
+			],
+			where: [
+				{ 'iam_rbac_permissions.action': action },
+				and,
+				{
+					'iam_rbac_role_permissions.role_id': inArray(roleIds),
+				} as Expression,
+			] as Expression,
+		};
 
 		if (resource) {
-			// If resource is provided, match:
-			// 1. Permissions with the exact resource
-			// 2. Permissions with null resource (action-only permissions)
-			matchingPermissions = permissions.filter(
-				(p) => p.resource === resource || p.resource === null
+			// If resource is specified, add condition for matching
+			// 	resource or global on resource type (null)
+			(query.where! as Expression[]).push(
+				...[
+					and,
+					[
+						{ 'iam_rbac_permissions.resource': resource },
+						or,
+						{ 'iam_rbac_permissions.resource': null },
+					],
+				]
 			);
 		}
 		else {
-			// If no resource provided, only match permissions with null
-			// 	resource
-			// (action-only permissions, no specific resource requirement)
-			matchingPermissions = permissions.filter(
-				(p) => p.resource === null
+			// If no resource specified, only match global permissions
+			(query.where! as Expression[]).push(
+				...[and, { 'iam_rbac_permissions.resource': null }]
 			);
 		}
 
-		if (matchingPermissions.length === 0) {
-			return false;
-		}
+		// Execute the query to get all role-permissions matching
+		// the criteria and the requested roleIds in a single database call
+		const rolePermissions = await this.rolePermissionsRepo.find(query);
 
-		// Get permission IDs to check
-		const permissionIds = matchingPermissions.map((p) => p.id);
-
-		// Check if any role has any of these permissions
-		// Query all matching permissions and aggregate all role-permission
-		// mappings
-		const rolePermissionMap = new Set<DatabaseRecordId>();
-
-		for (let i = 0; i < permissionIds.length; i++) {
-			const rolePermissions = await this.rolePermissionsRepo.find({
-				where: {
-					permission_id: permissionIds[i],
-				} as KeyValExpression<RbacRolePermission>,
-			});
-
-			if (rolePermissions) {
-				rolePermissions.forEach((rp) =>
-					rolePermissionMap.add(rp.role_id)
-				);
-			}
-		}
-
-		// If no roles are assigned to any matching permission, deny access
-		if (rolePermissionMap.size === 0) {
-			return false;
-		}
-
-		// Check if any of the requested roles have permission
-		return roleIds.some((roleId) => rolePermissionMap.has(roleId));
+		// Return true if any matching role-permissions were found
+		return rolePermissions && rolePermissions.length > 0;
 	}
 }
