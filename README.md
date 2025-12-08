@@ -85,27 +85,27 @@ Check if a principal is authorized for an action:
 
 ```typescript
 // Check with a specific resource
-const isAuthorized = await rbac.isAuthorized({
+const result = await rbac.evaluate({
 	principal,
 	action: 'read',
 	resource: 'documents'
 });
 
 // Check without a resource (for action-only permissions)
-const canLogout = await rbac.isAuthorized({ principal, action: 'logout' });
+const logoutResult = await rbac.evaluate({ principal, action: 'logout' });
 
 // Full evaluation with metadata
-const result = await rbac.evaluate({
+const writeResult = await rbac.evaluate({
 	principal,
 	action: 'write',
 	resource: 'documents',
 	metadata: { ip: '192.168.1.1' }
 });
 
-if (result.allowed) {
+if (writeResult.allowed) {
 	console.log('Access granted');
 } else {
-	console.log('Access denied:', result.reason);
+	console.log('Access denied:', writeResult.reason);
 }
 ```
 
@@ -230,12 +230,18 @@ const result = await rbac.evaluate({
 - If a resource is provided: Match permissions with the exact resource OR permissions with `resource: null`
 - If no resource is provided: Only match permissions with `resource: null`
 
-##### `isAuthorized(principal: Principal, action: string, resource?: string): Promise<boolean>`
+##### `evaluate(context: AuthorizationContext): Promise<AuthorizationResult>`
 
-Convenience method that calls `evaluate()` and returns only the boolean result.
+Evaluates authorization for a principal, action, and optional resource.
 
 ```typescript
-if (await rbac.isAuthorized(user, 'delete', 'users')) {
+const result = await rbac.evaluate({
+	principal: user,
+	action: 'delete',
+	resource: 'users'
+});
+
+if (result.allowed) {
 	// User can delete users
 }
 ```
@@ -316,7 +322,13 @@ rbac.principalRolesRepo		 // QueryRepository<RbacPrincipalRole>
 const rbac = new RbacAuthorization({ db });
 
 // Check if user can read documents
-if (await rbac.isAuthorized(user, 'read', 'documents')) {
+const result = await rbac.evaluate({
+	principal: user,
+	action: 'read',
+	resource: 'documents'
+});
+
+if (result.allowed) {
 	// Allow access
 }
 ```
@@ -328,11 +340,11 @@ A principal can have multiple roles with different permissions:
 ```typescript
 // Principal has both "editor" and "reviewer" roles
 await rbac.grantPermission({ principalId: userId, action: 'write', resource: 'articles' });	// editor
-await rbac.grantPermission({ principalId: userId, action: 'approve' });						 // reviewer
+await rbac.grantPermission({ principalId: userId, action: 'approve' });	// reviewer
 
 // Has access through either role
-await rbac.isAuthorized(user, 'write', 'articles');	// true
-await rbac.isAuthorized(user, 'approve');						 // true
+const canWrite = await rbac.evaluate({ principal: user, action: 'write', resource: 'articles' });	// true
+const canApprove = await rbac.evaluate({ principal: user, action: 'approve' });	// true
 ```
 
 ### Hierarchical Permissions
@@ -346,7 +358,7 @@ await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'rep
 await rbac.grantPermission({ principalId: userId, action: 'read', resource: 'analytics' });
 
 // Check specific permissions
-await rbac.isAuthorized(user, 'read', 'documents');	// true
+const canReadDocs = await rbac.evaluate({ principal: user, action: 'read', resource: 'documents' });	// true
 ```
 
 ### Temporary Access
@@ -372,8 +384,8 @@ await rbac.grantPermission({ principalId: userId, action: 'change-password' });
 await rbac.grantPermission({ principalId: userId, action: 'view-profile' });
 
 // Check authorization
-await rbac.isAuthorized(user, 'logout');							// true
-await rbac.isAuthorized(user, 'logout', 'resource');	// true (null resource matches any)
+const canLogout = await rbac.evaluate({ principal: user, action: 'logout' });	// true
+const canLogoutWithResource = await rbac.evaluate({ principal: user, action: 'logout', resource: 'resource' });	// true (null resource matches any)
 ```
 
 ## Contributing & Development
