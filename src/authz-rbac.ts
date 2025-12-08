@@ -328,36 +328,27 @@ export class RbacAuthorization extends Authorization<Principal> {
 		const permissionIds = matchingPermissions.map((p) => p.id);
 
 		// Check if any role has any of these permissions
-		const rolePermissions = await this.rolePermissionsRepo.find({
-			where: {
-				permission_id: permissionIds[0], // Start with first permission
-			} as KeyValExpression<RbacRolePermission>,
-		});
+		// Query all matching permissions and aggregate all role-permission
+		// mappings
+		const rolePermissionMap = new Set<DatabaseRecordId>();
 
-		if (rolePermissions.length === 0) {
-			return false;
+		for (let i = 0; i < permissionIds.length; i++) {
+			const rolePermissions = await this.rolePermissionsRepo.find({
+				where: {
+					permission_id: permissionIds[i],
+				} as KeyValExpression<RbacRolePermission>,
+			});
+
+			if (rolePermissions) {
+				rolePermissions.forEach((rp) =>
+					rolePermissionMap.add(rp.role_id)
+				);
+			}
 		}
 
-		// Check if any of the requested roles have any matching permission
-		const rolePermissionMap = new Set(
-			rolePermissions.map((rp) => rp.role_id)
-		);
-
-		// If there are more permissions, fetch them too
-		if (permissionIds.length > 1) {
-			for (let i = 1; i < permissionIds.length; i++) {
-				const additionalPerms = await this.rolePermissionsRepo.find({
-					where: {
-						permission_id: permissionIds[i],
-					} as KeyValExpression<RbacRolePermission>,
-				});
-
-				if (additionalPerms) {
-					additionalPerms.forEach((rp) =>
-						rolePermissionMap.add(rp.role_id)
-					);
-				}
-			}
+		// If no roles are assigned to any matching permission, deny access
+		if (rolePermissionMap.size === 0) {
+			return false;
 		}
 
 		// Check if any of the requested roles have permission

@@ -1481,6 +1481,74 @@ describe('RBAC Authorization', () => {
 			});
 			expect(auth3.allowed).toBe(false);
 		});
+
+		// eslint-disable-next-line max-len
+		it('regression: allows access when role is assigned to 2nd permission not 1st', async () => {
+			const action = 'regression_' + Date.now();
+			const res1 = 'reg_res1_' + Date.now();
+			const res2 = 'reg_res2_' + Date.now();
+
+			// Create two permissions for the same action
+			await permissionsRepo.insertOne({
+				record: {
+					action,
+					resource: res1,
+					create_timestamp: new Date(),
+				},
+			});
+
+			const perm2Inserted = await permissionsRepo.insertOne({
+				record: {
+					action,
+					resource: res2,
+					create_timestamp: new Date(),
+				},
+			});
+			const perm2Id = (perm2Inserted as unknown as { id: string }).id;
+
+			// Create role and assign ONLY the second permission
+			// (first permission has no role assignment)
+			const roleInserted = await rolesRepo.insertOne({
+				record: {
+					name: 'regression_role_' + Date.now(),
+					create_timestamp: new Date(),
+				},
+			});
+			const roleId = (roleInserted as unknown as { id: string }).id;
+
+			await rolePermissionsRepo.insertOne({
+				record: {
+					role_id: roleId,
+					permission_id: perm2Id,
+					create_timestamp: new Date(),
+				},
+			});
+
+			// Assign role to principal
+			await principalRolesRepo.insertOne({
+				record: {
+					principal_id: testPrincipalId,
+					role_id: roleId,
+					create_timestamp: new Date(),
+				},
+			});
+
+			// Should allow access to res2 (has permission assigned to role)
+			const authorized = await rbac.isAuthorized({
+				principal: testPrincipal,
+				action,
+				resource: res2,
+			});
+			expect(authorized).toBe(true);
+
+			// Should deny access to res1 (no permission assigned to role)
+			const notAuthorized = await rbac.isAuthorized({
+				principal: testPrincipal,
+				action,
+				resource: res1,
+			});
+			expect(notAuthorized).toBe(false);
+		});
 	});
 
 	describe('grantPermission() with Resource', () => {
