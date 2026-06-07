@@ -23,7 +23,11 @@
 	},
 	"dependencies": {
 		"@riao/dbal": "^3.8.0",
-		"@riao/iam": "^3.2.0"
+		"@riao/iam": "^3.0.0",
+		"@riao/rest": "^2.1.4",
+		"api-machine": "^1.3.0",
+		"hidi": "^2.2.0",
+		"valsan": "^2.5.0"
 	},
 	"devDependencies": {
 		"@istanbuljs/nyc-config-typescript": "^1.0.2",
