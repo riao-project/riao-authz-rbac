@@ -9,6 +9,7 @@ import { AuthorizationResult } from 'api-machine';
 /**
  * POST /evaluate - Check if principal can perform action
  */
+// eslint-disable-next-line no-console
 export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 	DatabaseRecordWithId
 > {
@@ -37,6 +38,9 @@ export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 			request as ApiRequest & { principal?: Principal }
 		).principal;
 		if (!principal) {
+			console.warn(
+				'[AuthZ-API] Evaluate called without authenticated principal'
+			);
 			throw new UnauthorizedError(
 				'An authenticated principal is required'
 			);
@@ -44,6 +48,13 @@ export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 
 		const action = request.body?.action as string;
 		const resource = request.body?.resource as string;
+
+		if (!action) {
+			console.warn(
+				`[AuthZ-API] Evaluate request missing action for principal ${principal.id}`
+			);
+			throw new Error('Action is required for authorization evaluation');
+		}
 
 		try {
 			const result = await this.auth.evaluate?.({
@@ -53,18 +64,34 @@ export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 			});
 
 			if (!result) {
+				console.error(
+					`[AuthZ-API] Authorization evaluation returned no result for principal ${principal.id}`
+				);
 				throw new Error(
 					'Authorization evaluation returned no result'
 				);
 			}
 
+			console.log(
+				`[AuthZ-API] Authorization evaluated for principal ${principal.id}:`,
+				{
+					action,
+					resource,
+					allowed: result.allowed,
+				}
+			);
+
 			return result;
-		}
-		catch (error) {
+		} catch (error) {
 			const message =
 				error instanceof Error
 					? error.message
 					: 'Authorization evaluation failed';
+
+			console.error(
+				`[AuthZ-API] Authorization evaluation error for principal ${principal.id}:`,
+				{ error: message }
+			);
 
 			throw new Error(message);
 		}
