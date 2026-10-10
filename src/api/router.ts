@@ -4,7 +4,6 @@ import { PermissionsRouter } from './permissions/router';
 import { RolePermissionsRouter } from './role-permissions/router';
 import { PrincipalRolesRouter } from './principal-roles/router';
 import { EvaluateRouter } from './evaluate/router';
-import type { RbacAuthorization } from '../authz-rbac';
 
 /**
  * Default RBAC authorization router
@@ -12,6 +11,10 @@ import type { RbacAuthorization } from '../authz-rbac';
  */
 export class DefaultRbacAuthzRouter extends RiaoRouter {
 	public override path = '/rbac';
+	public override authorization = {
+		action: 'manage',
+		resource: 'rbac',
+	};
 
 	protected async routes(): Promise<any[]> {
 		return [

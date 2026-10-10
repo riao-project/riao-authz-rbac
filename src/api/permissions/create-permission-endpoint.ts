@@ -1,11 +1,14 @@
 import { RiaoCreateEndpoint, DatabaseRecordWithId } from '@riao/rest';
-import { ApiRequest, ApiResponse, ApiNextFunction } from 'api-machine';
+import { ApiRequest } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
+import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 
 /**
  * POST /permissions - Create a new permission
  */
-export class CreatePermissionEndpoint extends RiaoCreateEndpoint<DatabaseRecordWithId> {
+export class CreatePermissionEndpoint extends RiaoCreateEndpoint<
+	DatabaseRecordWithId
+> {
 	public override path = '/permissions';
 	public override description = 'Create a new RBAC permission';
 
@@ -19,13 +22,13 @@ export class CreatePermissionEndpoint extends RiaoCreateEndpoint<DatabaseRecordW
 
 	public override inject() {
 		super.inject();
-		this.auth = this.container.require<RbacAuthorization>('auth');
+		this.auth = this.container.require<RbacAuthorization>(
+			RBAC_AUTHORIZATION_KEY
+		);
 	}
 
 	public override async handle(
-		request: ApiRequest,
-		response: ApiResponse,
-		next: ApiNextFunction
+		request: ApiRequest
 	): Promise<Partial<DatabaseRecordWithId>> {
 		const result = await this.auth.permissionsRepo.insertOne({
 			record: {

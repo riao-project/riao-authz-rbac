@@ -1,11 +1,14 @@
 import { RiaoUpdateEndpoint, DatabaseRecordWithId } from '@riao/rest';
-import { ApiRequest, ApiResponse, ApiNextFunction } from 'api-machine';
+import { ApiRequest } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
+import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 
 /**
  * PUT /permissions/:permissionId - Update a permission
  */
-export class UpdatePermissionEndpoint extends RiaoUpdateEndpoint<DatabaseRecordWithId> {
+export class UpdatePermissionEndpoint extends RiaoUpdateEndpoint<
+ DatabaseRecordWithId
+> {
 	public override path = '/permissions/:permissionId';
 	public override description = 'Update an RBAC permission';
 
@@ -19,15 +22,13 @@ export class UpdatePermissionEndpoint extends RiaoUpdateEndpoint<DatabaseRecordW
 
 	public override inject() {
 		super.inject();
-		this.auth = this.container.require<RbacAuthorization>('auth');
+		this.auth = this.container.require<RbacAuthorization>(
+			RBAC_AUTHORIZATION_KEY
+		);
 	}
 
-	public override async handle(
-		request: ApiRequest,
-		response: ApiResponse,
-		next: ApiNextFunction
-	): Promise<Partial<DatabaseRecordWithId>> {
-		const permissionId = request.params?.permissionId as string;
+	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {
+		const permissionId = request.params?.['permissionId'] as string;
 
 		const updates: any = {};
 		if (request.body?.action) {

@@ -1,0 +1,1 @@
+export const RBAC_AUTHORIZATION_KEY = 'api-machine.authz';
