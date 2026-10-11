@@ -1,15 +1,16 @@
 import { RiaoCreateEndpoint, DatabaseRecordWithId } from '@riao/rest';
-import { ApiRequest } from 'api-machine';
-import { UnauthorizedError } from 'api-machine';
-import { Principal } from '@riao/iam/auth';
+import {
+	ApiRequest,
+	AuthorizationResult,
+	BadRequestError,
+	UnauthorizedError,
+} from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
 import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
-import { AuthorizationResult } from 'api-machine';
 
 /**
  * POST /evaluate - Check if principal can perform action
  */
-// eslint-disable-next-line no-console
 export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 	DatabaseRecordWithId
 > {
@@ -34,47 +35,49 @@ export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 	public override async handle(
 		request: ApiRequest
 	): Promise<AuthorizationResult> {
-		const principal = (
-			request as ApiRequest & { principal?: Principal }
-		).principal;
+		const principal = request.principal;
 		if (!principal) {
-			console.warn(
-				'[AuthZ-API] Evaluate called without authenticated principal'
+			this.logAuthorization(
+				'warn', 'rbac.evaluate.missing-principal', request
 			);
 			throw new UnauthorizedError(
 				'An authenticated principal is required'
 			);
 		}
 
-		const action = request.body?.action as string;
-		const resource = request.body?.resource as string;
+		const action: unknown = request.body?.action;
+		const resource: unknown = request.body?.resource;
 
-		if (!action) {
-			console.warn(
-				`[AuthZ-API] Evaluate request missing action for principal ${principal.id}`
+		if (
+			typeof action !== 'string' ||
+			!action.trim() ||
+			(resource !== undefined &&
+				(typeof resource !== 'string' || !resource.trim()))
+		) {
+			this.logAuthorization(
+				'warn', 'rbac.evaluate.invalid-input', request
 			);
-			throw new Error('Action is required for authorization evaluation');
+			throw new BadRequestError(
+				'Action must be a non-empty string; resource, if provided, ' +
+				'must be a non-empty string'
+			);
 		}
 
 		try {
-			const result = await this.auth.evaluate?.({
+			const result = await this.auth.evaluate({
 				principal,
-				action: action as string,
-				resource: resource,
+				action,
+				resource,
 			});
 
 			if (!result) {
-				console.error(
-					`[AuthZ-API] Authorization evaluation returned no result for principal ${principal.id}`
-				);
 				throw new Error(
 					'Authorization evaluation returned no result'
 				);
 			}
 
-			console.log(
-				`[AuthZ-API] Authorization evaluated for principal ${principal.id}:`,
-				{
+			this.logAuthorization(
+				'info', 'rbac.evaluate.result', request, {
 					action,
 					resource,
 					allowed: result.allowed,
@@ -82,18 +85,14 @@ export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
 			);
 
 			return result;
-		} catch (error) {
-			const message =
-				error instanceof Error
-					? error.message
-					: 'Authorization evaluation failed';
-
-			console.error(
-				`[AuthZ-API] Authorization evaluation error for principal ${principal.id}:`,
-				{ error: message }
+		}
+		catch (error) {
+			this.logAuthorization(
+				'error', 'rbac.evaluate.error', request,
+				{ action, resource, error }
 			);
 
-			throw new Error(message);
+			throw error;
 		}
 	}
 }

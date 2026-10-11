@@ -25,7 +25,7 @@ export function createDatabase(name: string): Database {
 				name: `"${name}"`,
 			});
 
-			await super.init(options);
+			await super.init({ ...options, useSchemaCache: false });
 		}
 
 		public override configureFromEnv(): void {

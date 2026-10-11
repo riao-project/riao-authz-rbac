@@ -113,7 +113,9 @@ export class RbacAuthorization extends Authorization<Principal> {
 	 * @returns Authorization result
 	 */
 	public async evaluate(
-		context: AuthorizationContext<Principal>
+		context: Omit<AuthorizationContext<Principal>, 'principal'> & {
+			principal: Principal | Pick<Principal, 'id'>;
+		}
 	): Promise<AuthorizationResult> {
 		try {
 			// Get all active roles for the principal
