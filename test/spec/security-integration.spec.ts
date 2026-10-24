@@ -4,9 +4,9 @@ import {
 	BadRequestError,
 	BaseApiEndpoint,
 	BaseApiRouter,
-	LogInterface,
 	RestServer,
 } from 'api-machine';
+import { LogInterface } from 'api-machine/log';
 import { RiaoOAuth2BearerAuthenticationScheme } from '@riao/rest';
 import { AuthMigrations } from '@riao/iam/auth/auth-migrations';
 import { Principal } from '@riao/iam/auth';
@@ -202,6 +202,19 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 		expect(handled).toBe(0);
 	});
 
+	it('propagates real RBAC store failures as 500', async () => {
+		const error = new Error('Policy database unavailable');
+		spyOn(auth.principalRolesRepo, 'find').and.rejectWith(error);
+		const response = await request('/probe', 'admin');
+		expect(response.status).toBe(500);
+		expect(handled).toBe(0);
+		expect(logger.error).toHaveBeenCalledWith(
+			'authorization.error', jasmine.objectContaining({ error })
+		);
+		const body = await response.text();
+		expect(body).not.toContain(error.message);
+	});
+
 	it('returns a policy denial for a valid evaluation request', async () => {
 		const response = await request('/rbac/evaluate/evaluate', 'admin', {
 			action: 'ungranted-action',
@@ -211,6 +224,24 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 			allowed: false,
 		}));
 	});
+
+	it('returns 500 for evaluation backend failures without exposing details',
+		async () => {
+			const error = new Error('Evaluation backend unavailable');
+			spyOn(auth, 'evaluate').and.rejectWith(error);
+			const response = await request(
+				'/rbac/evaluate/evaluate',
+				'admin',
+				{ action: 'backend-failure' }
+			);
+			expect(response.status).toBe(500);
+			expect(logger.error).toHaveBeenCalledWith(
+				'rbac.evaluate.error', jasmine.objectContaining({
+					error, principalId: admin.id, requestId: 'rbac-test',
+				})
+			);
+			expect(await response.text()).not.toContain(error.message);
+		});
 
 	it('preserves typed evaluation errors and logs the original error',
 		async () => {

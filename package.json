@@ -23,15 +23,16 @@
 	},
 	"dependencies": {
 		"@riao/dbal": "^3.8.0",
-		"@riao/iam": "^4.0.0",
-		"@riao/rest": "^2.1.4",
-		"api-machine": "^1.5.0",
+		"@riao/iam": "^5.0.0",
+		"@riao/rest": "^3.0.0",
+		"api-machine": "^2.0.0",
 		"hidi": "^2.2.0",
 		"valsan": "^2.5.0"
 	},
 	"devDependencies": {
 		"@istanbuljs/nyc-config-typescript": "^1.0.2",
 		"@riao/cli": "^3.0.1",
+		"@riao/authn-oauth2-client-cred": "^2.0.0",
 		"@riao/postgres": "^3.5.0",
 		"@types/jasmine": "^5.1.4",
 		"@types/node": "^18.19.39",

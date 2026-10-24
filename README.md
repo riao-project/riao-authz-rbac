@@ -83,6 +83,35 @@ await rbac.grantPermission({
 
 Check if a principal is authorized for an action:
 
+Both `evaluate()` and `isAuthorized()` accept a trusted ID-only subject
+(`{ id: string }`) or a full IAM principal. In an API, use the authenticated
+request principal, never a body-supplied principal ID. RBAC resources must be
+non-empty strings when supplied; object-resource policies require a different
+authorization implementation.
+
+Policy denials return `{ allowed: false, reason }`. Database and evaluation
+failures reject unchanged and are logged by the API boundary, not converted
+into denials or exception-bearing reasons. Protected HTTP routes distinguish
+401 (no principal), 403 (policy denial), and 500 (unexpected service failure).
+The coordinated dependency targets are IAM 5, REST 3, and api-machine 2.
+REST's local version/dependency updates are currently deferred; its current
+2.2 manifest does not satisfy this package's `^3.0.0` release dependency.
+Validate local source builds together, but reconcile and publish dependency
+versions before a clean registry installation or release.
+
+See the [compiled server example](examples/index.ts) for OAuth2 authentication,
+an ID-only RBAC subject, an explicit public health endpoint, and a protected
+documents endpoint. Supply an initialized database with IAM/RBAC migrations and
+an authenticator that resolves active principals; then call `server.start()`.
+The authorizer uses `request.principal`, not an identity submitted in the body.
+The database-free [example contract tests](test/spec/example-contract.spec.ts)
+verify public opt-out, authentication-before-policy ordering, and trusted
+ID-only role lookup through this server. After building, run:
+
+```sh
+npm run test:run -- dist/test/spec/example-contract.spec.js
+```
+
 ```typescript
 // Check with a specific resource
 const result = await rbac.evaluate({

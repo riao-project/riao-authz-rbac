@@ -13,6 +13,7 @@ import {
 	AuthorizationContext,
 	AuthorizationResult,
 	AuthorizationOptions,
+	AuthorizationSubject,
 } from '@riao/iam/authorization';
 import { Principal } from '@riao/iam/auth';
 import { identifier } from '@riao/dbal/expression/identifier';
@@ -72,7 +73,9 @@ export interface CheckRolesHavePermissionContext {
  * RBAC uses roles as an intermediary between principals and permissions
  * Evaluation flow: Principal -> Roles -> Permissions -> Authorization decision
  */
-export class RbacAuthorization extends Authorization<Principal> {
+export class RbacAuthorization extends Authorization<
+	Principal, AuthorizationSubject
+> {
 	public rolesRepo: QueryRepository<RbacRole>;
 	public permissionsRepo: QueryRepository<RbacPermission>;
 	public rolePermissionsRepo: QueryRepository<RbacRolePermission>;
@@ -113,52 +116,50 @@ export class RbacAuthorization extends Authorization<Principal> {
 	 * @returns Authorization result
 	 */
 	public async evaluate(
-		context: Omit<AuthorizationContext<Principal>, 'principal'> & {
-			principal: Principal | Pick<Principal, 'id'>;
-		}
+		context: AuthorizationContext<AuthorizationSubject>
 	): Promise<AuthorizationResult> {
-		try {
-			// Get all active roles for the principal
-			// TODO: This may be optimized by joining?
-			// TODO: Caching?
-			const principalRoles = await this.getPrincipalActiveRoles(
-				context.principal.id
+		if (
+			typeof context.principal?.id !== 'string' ||
+			!context.principal.id.trim() ||
+			typeof context.action !== 'string' || !context.action.trim() ||
+			(context.resource !== undefined &&
+				(typeof context.resource !== 'string' ||
+					!context.resource.trim()))
+		) {
+			throw new TypeError(
+				'RBAC requires a principal ID, action, ' +
+				'and optional string resource'
 			);
+		}
 
-			if (principalRoles.length === 0) {
-				return {
-					allowed: false,
-					reason: 'Principal has no active roles',
-				};
-			}
+		const principalRoles = await this.getPrincipalActiveRoles(
+			context.principal.id
+		);
 
-			// Check if any role has the required permission
-			const roleIds = principalRoles.map((pr) => pr.role_id);
-			const hasPermission = await this.checkRolesHavePermission({
-				roleIds,
-				action: context.action,
-				resource: context.resource as string | undefined,
-			});
-
-			if (hasPermission) {
-				return {
-					allowed: true,
-				};
-			}
-
+		if (principalRoles.length === 0) {
 			return {
 				allowed: false,
-				reason: 'Principal roles do not have required permission',
+				reason: 'Principal has no active roles',
 			};
 		}
-		catch (error) {
+
+		const roleIds = principalRoles.map((pr) => pr.role_id);
+		const hasPermission = await this.checkRolesHavePermission({
+			roleIds,
+			action: context.action,
+			resource: context.resource,
+		});
+
+		if (hasPermission) {
 			return {
-				allowed: false,
-				reason:
-					'Authorization evaluation error: ' +
-					(error instanceof Error ? error.message : String(error)),
+				allowed: true,
 			};
 		}
+
+		return {
+			allowed: false,
+			reason: 'Principal roles do not have required permission',
+		};
 	}
 
 	/**
