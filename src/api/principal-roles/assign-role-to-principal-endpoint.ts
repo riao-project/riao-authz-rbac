@@ -1,11 +1,14 @@
 import { RiaoCreateEndpoint, DatabaseRecordWithId } from '@riao/rest';
-import { ApiRequest, ApiResponse, ApiNextFunction } from 'api-machine';
+import { ApiRequest } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
+import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 
 /**
  * POST /principals/:principalId/roles - Assign role to principal
  */
-export class AssignRoleToPrincipalEndpoint extends RiaoCreateEndpoint<DatabaseRecordWithId> {
+export class AssignRoleToPrincipalEndpoint extends RiaoCreateEndpoint<
+ DatabaseRecordWithId
+> {
 	public override path = '/principals/:principalId/roles';
 	public override description = 'Assign an RBAC role to a principal';
 
@@ -17,15 +20,13 @@ export class AssignRoleToPrincipalEndpoint extends RiaoCreateEndpoint<DatabaseRe
 
 	public override inject() {
 		super.inject();
-		this.auth = this.container.require<RbacAuthorization>('auth');
+		this.auth = this.container.require<RbacAuthorization>(
+			RBAC_AUTHORIZATION_KEY
+		);
 	}
 
-	public override async handle(
-		request: ApiRequest,
-		response: ApiResponse,
-		next: ApiNextFunction
-	): Promise<Partial<DatabaseRecordWithId>> {
-		const principalId = request.params?.principalId as string;
+	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {
+		const principalId = request.params?.['principalId'] as string;
 		const { roleId } = request.body as {
 			roleId: string;
 		};

@@ -1,6 +1,7 @@
 import { RiaoGetOneEndpoint } from '@riao/rest';
-import { ApiRequest, ApiResponse, ApiNextFunction } from 'api-machine';
+import { ApiRequest } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
+import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 
 /**
  * GET /roles/:roleId - Get a specific role
@@ -13,15 +14,13 @@ export class GetRoleEndpoint extends RiaoGetOneEndpoint<any> {
 
 	public override inject() {
 		super.inject();
-		this.auth = this.container.require<RbacAuthorization>('auth');
+		this.auth = this.container.require<RbacAuthorization>(
+			RBAC_AUTHORIZATION_KEY
+		);
 	}
 
-	public override async handle(
-		request: ApiRequest,
-		response: ApiResponse,
-		next: ApiNextFunction
-	): Promise<any> {
-		const roleId = request.params?.roleId as string;
+	public override async handle(request: ApiRequest): Promise<any> {
+		const roleId = request.params?.['roleId'] as string;
 
 		const role = await this.auth.rolesRepo.findOne({
 			where: { id: roleId },

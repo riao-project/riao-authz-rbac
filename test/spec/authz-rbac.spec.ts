@@ -164,20 +164,11 @@ describe('RBAC Authorization', () => {
 			expect(result.allowed).toBe(true);
 		});
 
-		it('should handle errors gracefully', async () => {
-			const result = await rbac.evaluate({
-				principal: {
-					id: 'invalid-id',
-					login: 'test',
-					name: 'Test',
-					type: 'user',
-					create_timestamp: new Date(),
-				},
+		it('propagates invalid database identifiers', async () => {
+			await expectAsync(rbac.evaluate({
+				principal: { id: 'invalid-id' },
 				action: 'read',
-			});
-
-			expect(result.allowed).toBe(false);
-			expect(result.reason).toBeDefined();
+			})).toBeRejected();
 		});
 
 		it('denies access without resource', async () => {
@@ -1232,15 +1223,11 @@ describe('RBAC Authorization', () => {
 				});
 			};
 
-			// Evaluate should handle non-Error thrown
-			const result = await rbac.evaluate({
+			await expectAsync(rbac.evaluate({
 				principal: testPrincipal,
 				action,
 				resource,
-			});
-
-			expect(result.allowed).toBe(false);
-			expect(result.reason).toContain('String error message');
+			})).toBeRejectedWith('String error message');
 
 			// Restore original
 			rbac.principalRolesRepo.find = originalFind;

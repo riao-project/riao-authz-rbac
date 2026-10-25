@@ -4,6 +4,7 @@
  */
 
 export { DefaultRbacAuthzRouter } from './router';
+export { RBAC_AUTHORIZATION_KEY } from './authz-key';
 
 // Roles domain
 export { CreateRoleEndpoint } from './roles/create-role-endpoint';
@@ -23,13 +24,17 @@ export { PermissionsRouter } from './permissions/router';
 
 // Role-Permissions domain
 export { AddPermissionToRoleEndpoint } from './role-permissions/add-permission-to-role-endpoint';
-export { RemovePermissionFromRoleEndpoint } from './role-permissions/remove-permission-from-role-endpoint';
+export {
+	RemovePermissionFromRoleEndpoint,
+} from './role-permissions/remove-permission-from-role-endpoint';
 export { GetRolePermissionsEndpoint } from './role-permissions/get-role-permissions-endpoint';
 export { RolePermissionsRouter } from './role-permissions/router';
 
 // Principal-Roles domain
 export { AssignRoleToPrincipalEndpoint } from './principal-roles/assign-role-to-principal-endpoint';
-export { RemoveRoleFromPrincipalEndpoint } from './principal-roles/remove-role-from-principal-endpoint';
+export {
+	RemoveRoleFromPrincipalEndpoint,
+} from './principal-roles/remove-role-from-principal-endpoint';
 export { GetPrincipalRolesEndpoint } from './principal-roles/get-principal-roles-endpoint';
 export { PrincipalRolesRouter } from './principal-roles/router';
 
