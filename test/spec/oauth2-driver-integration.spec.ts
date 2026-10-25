@@ -1,8 +1,8 @@
 import {
-	ApiRequest, BaseApiEndpoint, BaseApiRouter, RestServer,
+	ApiRequest, BaseApiEndpoint, BaseApiRouter, BearerAuthenticationScheme,
+	RestServer,
 } from 'api-machine';
 import { LogInterface } from 'api-machine/log';
-import { RiaoOAuth2BearerAuthenticationScheme } from '@riao/rest';
 import { Principal } from '@riao/iam/auth';
 import { AuthMigrations } from '@riao/iam/auth/auth-migrations';
 import {
@@ -77,7 +77,17 @@ describe('Real OAuth2 driver and RBAC HTTP integration', () => {
 			log: jasmine.createSpyObj<LogInterface>(
 				'log', ['fatal', 'error', 'warn', 'info', 'debug']
 			),
-			authentication: new RiaoOAuth2BearerAuthenticationScheme(oauth2),
+			authentication: new BearerAuthenticationScheme({
+				checkToken: async (accessToken) => {
+					const payload = await oauth2.verifyAccessToken(accessToken);
+					if (!payload) {
+						return false;
+					}
+					return (await oauth2.findActivePrincipal({
+						where: { id: payload.principal_id },
+					})) ?? false;
+				},
+			}),
 		});
 		server = instance;
 		await server.start();

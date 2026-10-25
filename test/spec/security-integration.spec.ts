@@ -4,10 +4,10 @@ import {
 	BadRequestError,
 	BaseApiEndpoint,
 	BaseApiRouter,
+	BearerAuthenticationScheme,
 	RestServer,
 } from 'api-machine';
 import { LogInterface } from 'api-machine/log';
-import { RiaoOAuth2BearerAuthenticationScheme } from '@riao/rest';
 import { AuthMigrations } from '@riao/iam/auth/auth-migrations';
 import { Principal } from '@riao/iam/auth';
 import { Database } from '@riao/dbal';
@@ -63,20 +63,14 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 				log: logger,
 				requireAuthentication: true,
 				authorizer: auth,
-				authentication: new RiaoOAuth2BearerAuthenticationScheme({
-					verifyAccessToken: async (token: string) => {
+				authentication: new BearerAuthenticationScheme({
+					checkToken: async (token: string) => {
 						if (token === 'backend-error') {
 							throw new Error('Token service unavailable');
 						}
-						return ['admin', 'user', 'inactive'].includes(token)
-							? {
-								principal_id: token === 'admin' ? admin.id :
-									token === 'user' ? user.id : randomUUID(),
-							} : null;
+						return token === 'admin' ? admin :
+							token === 'user' ? user : false;
 					},
-					findActivePrincipal: async ({ where }) =>
-						where.id === admin.id ? admin :
-							where.id === user.id ? user : null,
 				}),
 			});
 			this.container.registerInstance(

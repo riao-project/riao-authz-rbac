@@ -7,3 +7,4 @@
 - Propagate policy-store failures rather than returning exception-bearing
   denial results; reject unsupported object-resource policy input explicitly.
 - Verify real OAuth2 driver tokens through REST/RBAC HTTP enforcement.
+- Configure OAuth2 integration directly through API Machine's bearer callback.
