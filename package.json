@@ -3,6 +3,10 @@
 	"version": "3.0.0",
 	"description": "Riao RBAC",
 	"private": "true",
+	"engines": {
+		"node": ">=22.0.0",
+		"npm": ">=10.8.2"
+	},
 	"typescript-template": {
 		"base": "1.0.1",
 		"jasmine": "1.0.0",
@@ -25,9 +29,9 @@
 		"@riao/dbal": "^3.8.0",
 		"@riao/iam": "^5.0.0",
 		"@riao/rest": "^3.0.0",
-		"api-machine": "^2.0.0",
-		"hidi": "^2.2.0",
-		"valsan": "^2.5.0"
+		"api-machine": "^2.0.2",
+		"hidi": "^3.0.0",
+		"valsan": "^3.0.0"
 	},
 	"devDependencies": {
 		"@istanbuljs/nyc-config-typescript": "^1.0.2",

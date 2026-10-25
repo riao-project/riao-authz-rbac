@@ -222,7 +222,12 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 	it('returns 500 for evaluation backend failures without exposing details',
 		async () => {
 			const error = new Error('Evaluation backend unavailable');
-			spyOn(auth, 'evaluate').and.rejectWith(error);
+			spyOn(auth, 'evaluate').and.callFake(async (context) => {
+				if (context.action === 'backend-failure') {
+					throw error;
+				}
+				return { allowed: true };
+			});
 			const response = await request(
 				'/rbac/evaluate/evaluate',
 				'admin',

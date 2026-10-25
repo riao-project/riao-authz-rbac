@@ -23,11 +23,11 @@ describe('RBAC server example contract', () => {
 		);
 		repo.find.and.resolveTo([]);
 		db.getQueryRepository.and.returnValue(repo);
-		const instance = new Server(db, {
-			verifyAccessToken: async (token) => token === 'valid'
-				? { principal_id: 'trusted-user' } : null,
-			findActivePrincipal: async ({ where }) => where.id
-				? { id: where.id } : null,
+		const instance = new Server(db, async (token) => {
+			if (token === 'outage') {
+				throw new Error('Authentication service unavailable');
+			}
+			return token === 'valid' ? { id: 'trusted-user' } : false;
 		}, 0);
 		server = instance;
 		await server.start();
@@ -45,6 +45,22 @@ describe('RBAC server example contract', () => {
 
 	it('requires authentication before role lookup', async () => {
 		expect((await fetch(`${url}/documents`)).status).toBe(401);
+		expect(repo.find).not.toHaveBeenCalled();
+	});
+
+	it('rejects invalid tokens before role lookup', async () => {
+		const response = await fetch(`${url}/documents`, {
+			headers: { Authorization: 'Bearer invalid' },
+		});
+		expect(response.status).toBe(401);
+		expect(repo.find).not.toHaveBeenCalled();
+	});
+
+	it('preserves authentication service failures', async () => {
+		const response = await fetch(`${url}/documents`, {
+			headers: { Authorization: 'Bearer outage' },
+		});
+		expect(response.status).toBe(500);
 		expect(repo.find).not.toHaveBeenCalled();
 	});
 

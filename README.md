@@ -93,16 +93,29 @@ Policy denials return `{ allowed: false, reason }`. Database and evaluation
 failures reject unchanged and are logged by the API boundary, not converted
 into denials or exception-bearing reasons. Protected HTTP routes distinguish
 401 (no principal), 403 (policy denial), and 500 (unexpected service failure).
-The coordinated dependency targets are IAM 5, REST 3, and api-machine 2.
-REST's local version/dependency updates are currently deferred; its current
-2.2 manifest does not satisfy this package's `^3.0.0` release dependency.
-Validate local source builds together, but reconcile and publish dependency
-versions before a clean registry installation or release.
 
 See the [compiled server example](examples/index.ts) for OAuth2 authentication,
 an ID-only RBAC subject, an explicit public health endpoint, and a protected
 documents endpoint. Supply an initialized database with IAM/RBAC migrations and
-an authenticator that resolves active principals; then call `server.start()`.
+a bearer-token callback that resolves active principals; then call
+`server.start()`. For example, with an initialized OAuth2 driver:
+
+```typescript
+const server = new RbacExampleServer(db, async (token) => {
+	const payload = await oauth2.verifyAccessToken(token);
+
+	if (!payload) {
+		return false;
+	}
+
+	return (await oauth2.findActivePrincipal({
+		where: { id: payload.principal_id },
+	})) ?? false;
+});
+
+await server.start();
+```
+
 The authorizer uses `request.principal`, not an identity submitted in the body.
 The database-free [example contract tests](test/spec/example-contract.spec.ts)
 verify public opt-out, authentication-before-policy ordering, and trusted

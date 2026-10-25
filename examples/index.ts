@@ -4,12 +4,9 @@ import {
 	AuthenticatedPrincipal,
 	BaseApiEndpoint,
 	BaseApiRouter,
+	BearerAuthenticationScheme,
 	RestServer,
 } from 'api-machine';
-import {
-	RiaoOAuth2BearerAuthenticationScheme,
-	RiaoOAuth2TokenAuthenticator,
-} from '@riao/rest';
 import { RbacAuthorization } from '../src';
 
 export class DocumentsEndpoint extends BaseApiEndpoint {
@@ -42,16 +39,14 @@ export class RbacExampleServer extends RestServer {
 
 	public constructor(
 		db: Database,
-		authenticator: RiaoOAuth2TokenAuthenticator<AuthenticatedPrincipal>,
+		checkToken: (token: string) => Promise<false | AuthenticatedPrincipal>,
 		port = 3000
 	) {
 		super({
 			port,
 			requireAuthentication: true,
 			authorizer: new RbacAuthorization({ db }),
-			authentication: new RiaoOAuth2BearerAuthenticationScheme(
-				authenticator
-			),
+			authentication: new BearerAuthenticationScheme({ checkToken }),
 		});
 	}
 }
