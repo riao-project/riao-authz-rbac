@@ -127,9 +127,8 @@ await server.start();
 ```
 
 The authorizer uses `request.principal`, not an identity submitted in the body.
-The database-free [example contract tests](test/spec/example-contract.spec.ts)
-verify public opt-out, authentication-before-policy ordering, and trusted
-ID-only role lookup through this server. After building, run:
+
+The database-free [example contract tests](test/spec/example-contract.spec.ts) verify public opt-out, authentication-before-policy ordering, and trusted ID-only role lookup through this server. After building, run:
 
 ```sh
 npm run test:run -- dist/test/spec/example-contract.spec.js
@@ -163,10 +162,7 @@ if (writeResult.allowed) {
 
 ### 4. Revoke Role Assignments
 
-Permissions belong to roles, so remove access by deactivating the principal's
-role assignment through the principal-role API. Avoid revoking an individual
-permission by deactivating a shared role: that would remove every permission
-provided by that role.
+Permissions belong to roles, so remove access by deactivating the principal's role assignment through the principal-role API.
 
 ```typescript
 const assignment = await rbac.principalRolesRepo.findOne({
@@ -320,12 +316,7 @@ Links an existing permission to a role. Repeated links are ignored.
 
 ##### `assignRole(options): Promise<void>`
 
-Assigns an existing role to a principal. Repeated assignments are ignored;
-previously deactivated assignments are reactivated.
-
-Build and assign roles explicitly so each principal receives the role's full,
-intentional permission set. The class does not provide direct permission grant
-or revoke shortcuts.
+Assigns (or reactivates) an existing role to a principal.
 
 ### Repository Access
 
@@ -412,23 +403,6 @@ await rbac.assignRole({ principalId: userId, roleId: readerId });
 
 // Check specific permissions
 const canReadDocs = await rbac.evaluate({ principal: user, action: 'read', resource: 'documents' });	// true
-```
-
-### Temporary Role Assignment
-
-Assign a role for temporary access, then deactivate that specific assignment
-through the principal-role API when access should end:
-
-```typescript
-const exporterId = await rbac.role({ name: 'temporary-data-exporter' });
-const exportPermissionId = await rbac.permission({
-	action: 'export',
-	resource: 'data'
-});
-await rbac.addPermissionToRole({
-	roleId: exporterId, permissionId: exportPermissionId,
-});
-await rbac.assignRole({ principalId: userId, roleId: exporterId });
 ```
 
 ### Action-Only Permissions
