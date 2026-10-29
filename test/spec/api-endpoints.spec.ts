@@ -28,6 +28,10 @@ import {
 	AssignRoleToPrincipalEndpoint,
 	RemoveRoleFromPrincipalEndpoint,
 	GetPrincipalRolesEndpoint,
+	SearchRolesEndpoint,
+	SearchPermissionsEndpoint,
+	SearchRolePermissionsEndpoint,
+	SearchPrincipalRolesEndpoint,
 	EvaluateAuthorizationEndpoint,
 	RBAC_AUTHORIZATION_KEY,
 } from '../../src/api';
@@ -52,6 +56,10 @@ describe('RBAC Authorization API Endpoints', () => {
 	let removeRoleEndpoint: RemoveRoleFromPrincipalEndpoint;
 	let getPrincipalRolesEndpoint: GetPrincipalRolesEndpoint;
 	let evaluateEndpoint: EvaluateAuthorizationEndpoint;
+	const searchRolesEndpoint = new SearchRolesEndpoint();
+	const searchPermissionsEndpoint = new SearchPermissionsEndpoint();
+	const searchRolePermissionsEndpoint = new SearchRolePermissionsEndpoint();
+	const searchPrincipalRolesEndpoint = new SearchPrincipalRolesEndpoint();
 
 	beforeAll(async () => {
 		db = createDatabase('api-endpoints-test');
@@ -73,6 +81,14 @@ describe('RBAC Authorization API Endpoints', () => {
 
 		const container = new DependencyContainer();
 		container.registerInstance(RBAC_AUTHORIZATION_KEY, auth);
+
+		for (const endpoint of [
+			searchRolesEndpoint, searchPermissionsEndpoint,
+			searchRolePermissionsEndpoint, searchPrincipalRolesEndpoint,
+		]) {
+			endpoint.container.setParent(container);
+			endpoint.inject();
+		}
 
 		// Initialize endpoints and assign auth dependency
 		createRoleEndpoint = new CreateRoleEndpoint();
@@ -151,6 +167,7 @@ describe('RBAC Authorization API Endpoints', () => {
 				endpoints: [
 					createRoleEndpoint, getRolesEndpoint, getRoleEndpoint,
 					updateRoleEndpoint, deleteRoleEndpoint,
+					searchRolesEndpoint,
 				],
 			},
 			{
@@ -159,6 +176,7 @@ describe('RBAC Authorization API Endpoints', () => {
 					createPermissionEndpoint, getPermissionsEndpoint,
 					getPermissionEndpoint, updatePermissionEndpoint,
 					deletePermissionEndpoint,
+					searchPermissionsEndpoint,
 				],
 			},
 			{
@@ -166,6 +184,7 @@ describe('RBAC Authorization API Endpoints', () => {
 				endpoints: [
 					addPermissionEndpoint, getRolePermissionsEndpoint,
 					removePermissionEndpoint,
+					searchRolePermissionsEndpoint,
 				],
 			},
 			{
@@ -173,6 +192,7 @@ describe('RBAC Authorization API Endpoints', () => {
 				endpoints: [
 					assignRoleEndpoint, removeRoleEndpoint,
 					getPrincipalRolesEndpoint,
+					searchPrincipalRolesEndpoint,
 				],
 			},
 		];
@@ -203,7 +223,14 @@ describe('RBAC Authorization API Endpoints', () => {
 
 		await router.register({ use: () => undefined } as any, '');
 
-		expect(router.registeredRoutes.length).toBe(5);
+		expect(router.registeredRoutes.map((route) => route.constructor.name))
+			.toEqual([
+				'RolesRouter',
+				'PermissionsRouter',
+				'RolePermissionsRouter',
+				'PrincipalRolesRouter',
+				'EvaluateRouter',
+			]);
 		for (const childRouter of router.registeredRoutes as any[]) {
 			for (const endpoint of childRouter.registeredRoutes as any[]) {
 				expect(endpoint.getEffectiveAuthorizationRequirement()).toEqual({

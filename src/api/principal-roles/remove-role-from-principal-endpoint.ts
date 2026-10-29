@@ -6,23 +6,21 @@ import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 import { MinLengthValidator, ObjectValSan } from 'valsan';
 
 /**
- * DELETE /principals/:principalId/roles/:roleId - Remove role from principal
+ * DELETE /principal-roles/:id - Deactivate a principal-role assignment
  */
 export class RemoveRoleFromPrincipalEndpoint extends RiaoDeleteEndpoint<DatabaseRecordWithId> {
-	public override path = '/:principalId/roles/:roleId';
-	public override description = 'Remove an RBAC role from a principal';
+	public override path = '/:id';
+	public override description = 'Deactivate an RBAC principal-role assignment';
 
 	protected auth: RbacAuthorization;
 
 	public override params = new ObjectValSan({
 		schema: {
-			principalId: new MinLengthValidator({ minLength: 1 }),
-			roleId: new MinLengthValidator({ minLength: 1 }),
+			id: new MinLengthValidator({ minLength: 1 }),
 		},
 	});
 	public override paramsExample = {
-		principalId: 'principal-123',
-		roleId: 'role-123',
+		id: 'assignment-123',
 	};
 
 	public override getErrors() {
@@ -43,11 +41,11 @@ export class RemoveRoleFromPrincipalEndpoint extends RiaoDeleteEndpoint<Database
 	}
 
 	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {
-		const principalId = request.params?.['principalId'] as string;
-		const roleId = request.params?.['roleId'] as string;
-
-		await this.auth.principalRolesRepo.delete({
-			where: { principal_id: principalId, role_id: roleId },
+		const id = request.params['id'] as string;
+		await this.findOneOr404(id);
+		await this.auth.principalRolesRepo.update({
+			where: { id },
+			set: { deactivate_timestamp: new Date() },
 		});
 
 		return {};

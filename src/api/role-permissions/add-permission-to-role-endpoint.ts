@@ -5,24 +5,23 @@ import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 import { MinLengthValidator, ObjectValSan } from 'valsan';
 
 /**
- * POST /roles/:roleId/permissions - Add permission to role
+ * POST /role-permissions - Add permission to role
  */
 export class AddPermissionToRoleEndpoint extends RiaoCreateEndpoint<DatabaseRecordWithId> {
-	public override path = '/:roleId/permissions';
+	public override path = '/';
 	public override description = 'Add a permission to an RBAC role';
 
 	protected auth: RbacAuthorization;
 
-	public override params = new ObjectValSan({
-		schema: { roleId: new MinLengthValidator({ minLength: 1 }) },
-	});
-	public override paramsExample = { roleId: 'role-123' };
-
 	public override body = new ObjectValSan({
-		schema: { permissionId: new MinLengthValidator({ minLength: 1 }) },
+		schema: {
+			roleId: new MinLengthValidator({ minLength: 1 }),
+			permissionId: new MinLengthValidator({ minLength: 1 }),
+		},
 	});
 
 	public override bodyExample = {
+		roleId: 'role-123',
 		permissionId: 'perm-123',
 	};
 
@@ -35,18 +34,20 @@ export class AddPermissionToRoleEndpoint extends RiaoCreateEndpoint<DatabaseReco
 	}
 
 	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {
-		const roleId = request.params?.['roleId'] as string;
-		const { permissionId } = request.body as {
+		const { roleId, permissionId } = request.body as {
+			roleId: string;
 			permissionId: string;
 		};
 
-		const result = await this.auth.rolePermissionsRepo.insertOne({
-			record: {
-				role_id: roleId,
-				permission_id: permissionId,
-			},
+		await this.auth.addPermissionToRole({ roleId, permissionId });
+		const assignment = await this.auth.rolePermissionsRepo.findOne({
+			where: { role_id: roleId, permission_id: permissionId },
 		});
 
-		return result as { id: string };
+		if (typeof assignment?.id !== 'string') {
+			throw new Error('Permission assignment returned no string ID');
+		}
+
+		return { id: assignment.id };
 	}
 }

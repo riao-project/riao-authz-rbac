@@ -5,24 +5,23 @@ import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 import { MinLengthValidator, ObjectValSan } from 'valsan';
 
 /**
- * POST /principals/:principalId/roles - Assign role to principal
+ * POST /principal-roles - Assign role to principal
  */
 export class AssignRoleToPrincipalEndpoint extends RiaoCreateEndpoint<DatabaseRecordWithId> {
-	public override path = '/:principalId/roles';
+	public override path = '/';
 	public override description = 'Assign an RBAC role to a principal';
 
 	protected auth: RbacAuthorization;
 
-	public override params = new ObjectValSan({
-		schema: { principalId: new MinLengthValidator({ minLength: 1 }) },
-	});
-	public override paramsExample = { principalId: 'principal-123' };
-
 	public override body = new ObjectValSan({
-		schema: { roleId: new MinLengthValidator({ minLength: 1 }) },
+		schema: {
+			principalId: new MinLengthValidator({ minLength: 1 }),
+			roleId: new MinLengthValidator({ minLength: 1 }),
+		},
 	});
 
 	public override bodyExample = {
+		principalId: 'principal-123',
 		roleId: 'role-123',
 	};
 
@@ -35,22 +34,19 @@ export class AssignRoleToPrincipalEndpoint extends RiaoCreateEndpoint<DatabaseRe
 	}
 
 	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {
-		const principalId = request.params?.['principalId'] as string;
-		const { roleId } = request.body as {
+		const { principalId, roleId } = request.body as {
+			principalId: string;
 			roleId: string;
 		};
 
-		if (!this.auth) {
-			throw new Error('Authentication handler not initialized');
+		await this.auth.assignRole({ principalId, roleId });
+		const assignment = await this.auth.principalRolesRepo.findOne({
+			where: { principal_id: principalId, role_id: roleId },
+		});
+		if (typeof assignment?.id !== 'string') {
+			throw new Error('Role assignment returned no string ID');
 		}
 
-		const result = await this.auth.principalRolesRepo.insertOne({
-			record: {
-				principal_id: principalId,
-				role_id: roleId,
-			},
-		});
-
-		return {};
+		return { id: assignment.id };
 	}
 }

@@ -1,23 +1,17 @@
 import { RiaoGetListEndpoint } from '@riao/rest';
-import { MinLengthValidator, ObjectValSan } from 'valsan';
+import { ObjectValSan } from 'valsan';
 import { listValidators } from '@riao/rest/endpoints/get-list-endpoint';
-import { ApiRequest } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
 import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 
 /**
- * GET /roles/:roleId/permissions - Get all permissions for a role
+ * GET /role-permissions - Get role-permission assignments
  */
 export class GetRolePermissionsEndpoint extends RiaoGetListEndpoint<any> {
-	public override path = '/:roleId/permissions';
-	public override description = 'Get all permissions assigned to a role';
+	public override path = '/';
+	public override description = 'Get RBAC role-permission assignments';
 
 	protected auth: RbacAuthorization;
-
-	public override params = new ObjectValSan({
-		schema: { roleId: new MinLengthValidator({ minLength: 1 }) },
-	});
-	public override paramsExample = { roleId: 'role-123' };
 
 	public override queryExample = {
 		limit: 100, offset: 0, orderBy: 'id', orderDirection: 'DESC',
@@ -30,15 +24,5 @@ export class GetRolePermissionsEndpoint extends RiaoGetListEndpoint<any> {
 		);
 		this.container.registerInstance('repo', this.auth.rolePermissionsRepo);
 		super.inject();
-	}
-
-	public override async handle(request: ApiRequest): Promise<any[]> {
-		const roleId = request.params?.['roleId'] as string;
-
-		const rolePermissions = await this.auth.rolePermissionsRepo.find({
-			where: { role_id: roleId },
-		});
-
-		return rolePermissions;
 	}
 }

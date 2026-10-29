@@ -59,13 +59,13 @@ describe('RBAC endpoint request schemas', () => {
 		{ endpoint: new DeletePermissionEndpoint() },
 		{
 			endpoint: new AddPermissionToRoleEndpoint(),
-			body: ['permissionId'],
+			body: ['roleId', 'permissionId'],
 		},
 		{ endpoint: new RemovePermissionFromRoleEndpoint() },
 		{ endpoint: new GetRolePermissionsEndpoint(), query: listFields },
 		{
 			endpoint: new AssignRoleToPrincipalEndpoint(),
-			body: ['roleId'],
+			body: ['principalId', 'roleId'],
 		},
 		{ endpoint: new RemoveRoleFromPrincipalEndpoint() },
 		{ endpoint: new GetPrincipalRolesEndpoint(), query: listFields },

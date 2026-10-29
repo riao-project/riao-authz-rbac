@@ -6,23 +6,21 @@ import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 import { MinLengthValidator, ObjectValSan } from 'valsan';
 
 /**
- * DELETE /roles/:roleId/permissions/:permissionId - Remove permission from role
+ * DELETE /role-permissions/:id - Delete a role-permission assignment
  */
 export class RemovePermissionFromRoleEndpoint extends RiaoDeleteEndpoint<DatabaseRecordWithId> {
-	public override path = '/:roleId/permissions/:permissionId';
+	public override path = '/:id';
 	public override description = 'Remove a permission from an RBAC role';
 
 	protected auth: RbacAuthorization;
 
 	public override params = new ObjectValSan({
 		schema: {
-			roleId: new MinLengthValidator({ minLength: 1 }),
-			permissionId: new MinLengthValidator({ minLength: 1 }),
+			id: new MinLengthValidator({ minLength: 1 }),
 		},
 	});
 	public override paramsExample = {
-		roleId: 'role-123',
-		permissionId: 'perm-123',
+		id: 'assignment-123',
 	};
 
 	public override getErrors() {
@@ -43,14 +41,10 @@ export class RemovePermissionFromRoleEndpoint extends RiaoDeleteEndpoint<Databas
 	}
 
 	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {
-		const roleId = request.params?.['roleId'] as string;
-		const permissionId = request.params?.['permissionId'] as string;
-
+		const id = request.params['id'] as string;
+		await this.findOneOr404(id);
 		await this.auth.rolePermissionsRepo.delete({
-			where: {
-				role_id: roleId,
-				permission_id: permissionId,
-			},
+			where: { id },
 		});
 
 		return {};
