@@ -1,6 +1,6 @@
 {
 	"name": "@riao/authz-rbac",
-	"version": "3.0.0",
+	"version": "3.1.0",
 	"description": "Riao RBAC",
 	"private": "true",
 	"engines": {
