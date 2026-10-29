@@ -1,31 +1,28 @@
-import { RiaoGetListEndpoint, DatabaseRecordWithId } from '@riao/rest';
-import { ApiRequest } from 'api-machine';
+import { RiaoGetListEndpoint } from '@riao/rest';
+import { ObjectValSan } from 'valsan';
+import { listValidators } from '@riao/rest/endpoints/get-list-endpoint';
 import { RbacAuthorization } from '../../authz-rbac';
 import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
 
 /**
- * GET /principals/:principalId/roles - Get roles for principal
+ * GET /principal-roles - Get principal-role assignments
  */
 export class GetPrincipalRolesEndpoint extends RiaoGetListEndpoint<any> {
-	public override path = '/principals/:principalId/roles';
-	public override description = 'Get RBAC roles assigned to a principal';
+	public override path = '/';
+	public override description = 'Get RBAC principal-role assignments';
 
 	protected auth: RbacAuthorization;
 
+	public override queryExample = {
+		limit: 100, offset: 0, orderBy: 'id', orderDirection: 'DESC',
+	};
+	public override query = new ObjectValSan({ schema: listValidators });
+
 	public override inject() {
-		super.inject();
 		this.auth = this.container.require<RbacAuthorization>(
 			RBAC_AUTHORIZATION_KEY
 		);
-	}
-
-	public override async handle(request: ApiRequest): Promise<any[]> {
-		const principalId = request.params?.['principalId'] as string;
-
-		const roles = await this.auth.principalRolesRepo.find({
-			where: { principal_id: principalId },
-		});
-
-		return roles;
+		this.container.registerInstance('repo', this.auth.principalRolesRepo);
+		super.inject();
 	}
 }

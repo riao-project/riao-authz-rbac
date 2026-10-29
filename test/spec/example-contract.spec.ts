@@ -43,6 +43,11 @@ describe('RBAC server example contract', () => {
 		expect(repo.find).not.toHaveBeenCalled();
 	});
 
+	it('mounts the protected RBAC administration routes', async () => {
+		expect((await fetch(`${url}/rbac/roles`)).status).toBe(401);
+		expect(repo.find).not.toHaveBeenCalled();
+	});
+
 	it('requires authentication before role lookup', async () => {
 		expect((await fetch(`${url}/documents`)).status).toBe(401);
 		expect(repo.find).not.toHaveBeenCalled();

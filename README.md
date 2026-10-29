@@ -162,8 +162,7 @@ if (writeResult.allowed) {
 
 ### 4. Revoke Role Assignments
 
-Permissions belong to roles, so remove access by deactivating the principal's
-role assignment through the principal-role API.
+Permissions belong to roles, so remove access by deactivating the principal's role assignment through the principal-role API.
 
 ```typescript
 const assignment = await rbac.principalRolesRepo.findOne({

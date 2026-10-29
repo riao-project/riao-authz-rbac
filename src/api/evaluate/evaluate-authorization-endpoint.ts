@@ -1,4 +1,4 @@
-import { RiaoCreateEndpoint, DatabaseRecordWithId } from '@riao/rest';
+import { PostEndpoint, ConflictError } from 'api-machine';
 import {
 	ApiRequest,
 	AuthorizationResult,
@@ -7,23 +7,36 @@ import {
 } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
 import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
+import { ObjectValSan, PatternValidator } from 'valsan';
 
 /**
  * POST /evaluate - Check if principal can perform action
  */
-export class EvaluateAuthorizationEndpoint extends RiaoCreateEndpoint<
-	DatabaseRecordWithId
-> {
-	public override path = '/evaluate';
+export class EvaluateAuthorizationEndpoint extends PostEndpoint {
+	public override path = '/';
 	public override description =
 		'Evaluate if a principal can perform an action';
 
 	protected auth: RbacAuthorization;
 
+	public override body = new ObjectValSan({
+		allowAdditionalProperties: true,
+		schema: {
+			action: new PatternValidator({ pattern: /\S/ }),
+			resource: new PatternValidator({
+				pattern: /\S/, isUndefinable: true,
+			}),
+		},
+	});
+
 	public override bodyExample = {
 		action: 'read',
 		resource: 'documents',
 	};
+
+	public override getErrors() {
+		return { ...super.getErrors(), conflict: new ConflictError() };
+	}
 
 	public override inject() {
 		super.inject();

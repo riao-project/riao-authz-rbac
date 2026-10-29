@@ -4,6 +4,7 @@ import { GetPermissionsEndpoint } from './get-permissions-endpoint';
 import { GetPermissionEndpoint } from './get-permission-endpoint';
 import { UpdatePermissionEndpoint } from './update-permission-endpoint';
 import { DeletePermissionEndpoint } from './delete-permission-endpoint';
+import { SearchPermissionsEndpoint } from './search-permissions-endpoint';
 
 /**
  * Router for permission management endpoints
@@ -15,6 +16,7 @@ export class PermissionsRouter extends RiaoRouter {
 		return [
 			CreatePermissionEndpoint,
 			GetPermissionsEndpoint,
+			SearchPermissionsEndpoint,
 			GetPermissionEndpoint,
 			UpdatePermissionEndpoint,
 			DeletePermissionEndpoint,
