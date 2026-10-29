@@ -60,23 +60,37 @@ const db = new Database(/* ... */);
 const rbac = new RbacAuthorization({ db });
 ```
 
-### 2. Grant Permissions
-
-Grant a permission to a principal by creating a role and assigning it:
+## 2. Define roles & permissions
 
 ```typescript
-// Grant a single permission
-await rbac.grantPermission({
-	principalId,
+const roleId = await rbac.role({ name: 'administrator' });
+const permissionId = await rbac.permission({
+	action: 'manage',
+	resource: 'documents'
+});
+await rbac.addPermissionToRole({ roleId, permissionId });
+```
+
+These helpers reuse existing records if they already exist. `role()` and `permission()` leave existing descriptions and role activation unchanged.
+
+### 2. Grant Roles & Permissions
+
+Assign a role to a principal:
+
+```typescript
+await rbac.assignRole({ principalId, roleId });
+```
+
+Define a named role, add permissions to it, then assign that role:
+
+```typescript
+const roleId = await rbac.role({ name: 'document-reader' });
+const permissionId = await rbac.permission({
 	action: 'read',
 	resource: 'documents'
 });
-
-// Grant an action-only permission (no specific resource)
-await rbac.grantPermission({
-	principalId,
-	action: 'logout'
-});
+await rbac.addPermissionToRole({ roleId, permissionId });
+await rbac.assignRole({ principalId, roleId });
 ```
 
 ### 3. Check Authorization
@@ -94,11 +108,7 @@ failures reject unchanged and are logged by the API boundary, not converted
 into denials or exception-bearing reasons. Protected HTTP routes distinguish
 401 (no principal), 403 (policy denial), and 500 (unexpected service failure).
 
-See the [compiled server example](examples/index.ts) for OAuth2 authentication,
-an ID-only RBAC subject, an explicit public health endpoint, and a protected
-documents endpoint. Supply an initialized database with IAM/RBAC migrations and
-a bearer-token callback that resolves active principals; then call
-`server.start()`. For example, with an initialized OAuth2 driver:
+See the [compiled server example](examples/index.ts)
 
 ```typescript
 const server = new RbacExampleServer(db, async (token) => {
@@ -151,15 +161,23 @@ if (writeResult.allowed) {
 }
 ```
 
-### 4. Revoke Permissions
+### 4. Revoke Role Assignments
 
-Revoke a permission by deactivating the role assignment:
+Permissions belong to roles, so remove access by deactivating the principal's
+role assignment through the principal-role API. Avoid revoking an individual
+permission by deactivating a shared role: that would remove every permission
+provided by that role.
 
 ```typescript
-await rbac.revokePermission({
-	principalId,
-	action: 'read'
+const assignment = await rbac.principalRolesRepo.findOne({
+	where: { principal_id: principalId, role_id: roleId }
 });
+if (assignment) {
+	await rbac.principalRolesRepo.update({
+		where: { id: assignment.id },
+		set: { deactivate_timestamp: new Date() }
+	});
+}
 ```
 
 ## Core Concepts
@@ -288,59 +306,26 @@ if (result.allowed) {
 }
 ```
 
-##### `grantPermission(options: GrantPermissionOptions): Promise<void>`
+##### `role(options): Promise<DatabaseRecordId>`
 
-Grants a permission to a principal by assigning a role.
+Creates or reuses a role by name.
 
-**Options:**
-- `principalId`: The principal ID to grant permission to
-- `action`: The action name (e.g., "read", "write", "delete")
-- `resource` (optional): The resource scope (e.g., "documents", "users")
+##### `permission(options): Promise<DatabaseRecordId>`
 
-**Behavior:**
-1. Creates or reuses a role for the action
-2. Creates or reuses a permission for the action and resource
-3. Links the permission to the role (if not already linked)
-4. Assigns the role to the principal (if not already assigned)
+Creates or reuses a permission by action and optional resource.
 
-```typescript
-// Grant "read" permission on "documents"
-await rbac.grantPermission({
-	principalId,
-	action: 'read',
-	resource: 'documents'
-});
+##### `addPermissionToRole(options): Promise<void>`
 
-// Grant action-only "logout" permission
-await rbac.grantPermission({
-	principalId,
-	action: 'logout'
-});
-```
+Links an existing permission to a role. Repeated links are ignored.
 
-**Note:** Idempotent - safe to call multiple times
+##### `assignRole(options): Promise<void>`
 
-##### `revokePermission(options: RevokePermissionOptions): Promise<void>`
+Assigns an existing role to a principal. Repeated assignments are ignored;
+previously deactivated assignments are reactivated.
 
-Revokes a permission from a principal by deactivating the role assignment.
-
-**Options:**
-- `principalId`: The principal ID to revoke permission from
-- `action`: The action name to revoke
-
-```typescript
-await rbac.revokePermission({
-	principalId,
-	action: 'delete'
-});
-```
-
-**Behavior:**
-1. Finds the role for the action
-2. Sets `deactivate_timestamp` on the principal-role assignment
-3. Does not delete data; allows for audit trails and reactivation
-
-**Note:** Deactivation is soft-delete; the principal can be re-granted the permission later
+Build and assign roles explicitly so each principal receives the role's full,
+intentional permission set. The class does not provide direct permission grant
+or revoke shortcuts.
 
 ### Repository Access
 
@@ -381,15 +366,22 @@ A principal can have multiple roles with different permissions:
 
 ```typescript
 // Principal has both "editor" and "reviewer" roles
-await rbac.grantPermission({
-	principalId: userId,
+const editorId = await rbac.role({ name: 'editor' });
+const writeArticlesId = await rbac.permission({
 	action: 'write',
 	resource: 'articles'
-});	// editor
-await rbac.grantPermission({
-	principalId: userId,
-	action: 'approve'
-});	// reviewer
+});
+await rbac.addPermissionToRole({
+	roleId: editorId, permissionId: writeArticlesId,
+});
+await rbac.assignRole({ principalId: userId, roleId: editorId });
+
+const reviewerId = await rbac.role({ name: 'reviewer' });
+const approveId = await rbac.permission({ action: 'approve' });
+await rbac.addPermissionToRole({
+	roleId: reviewerId, permissionId: approveId,
+});
+await rbac.assignRole({ principalId: userId, roleId: reviewerId });
 
 // Has access through either role
 const canWrite = await rbac.evaluate({
@@ -408,44 +400,35 @@ const canApprove = await rbac.evaluate({
 Implement permission hierarchies using naming conventions:
 
 ```typescript
-// Define related permissions
-await rbac.grantPermission({
-	principalId: userId,
-	action: 'read',
-	resource: 'documents'
-});
-await rbac.grantPermission({
-	principalId: userId,
-	action: 'read',
-	resource: 'reports'
-});
-await rbac.grantPermission({
-	principalId: userId,
-	action: 'read',
-	resource: 'analytics'
-});
+// Group related permissions in a role
+const readerId = await rbac.role({ name: 'analytics-reader' });
+for (const resource of ['documents', 'reports', 'analytics']) {
+	const permissionId = await rbac.permission({ action: 'read', resource });
+	await rbac.addPermissionToRole({
+		roleId: readerId, permissionId,
+	});
+}
+await rbac.assignRole({ principalId: userId, roleId: readerId });
 
 // Check specific permissions
 const canReadDocs = await rbac.evaluate({ principal: user, action: 'read', resource: 'documents' });	// true
 ```
 
-### Temporary Access
+### Temporary Role Assignment
 
-Grant access temporarily and revoke it later:
+Assign a role for temporary access, then deactivate that specific assignment
+through the principal-role API when access should end:
 
 ```typescript
-// Grant temporary access
-await rbac.grantPermission({
-	principalId: userId,
+const exporterId = await rbac.role({ name: 'temporary-data-exporter' });
+const exportPermissionId = await rbac.permission({
 	action: 'export',
 	resource: 'data'
 });
-
-// Later, revoke the access
-await rbac.revokePermission({
-	principalId: userId,
-	action: 'export'
+await rbac.addPermissionToRole({
+	roleId: exporterId, permissionId: exportPermissionId,
 });
+await rbac.assignRole({ principalId: userId, roleId: exporterId });
 ```
 
 ### Action-Only Permissions
@@ -453,10 +436,15 @@ await rbac.revokePermission({
 For permissions that don't require a resource scope:
 
 ```typescript
-// Grant action-only permission
-await rbac.grantPermission({ principalId: userId, action: 'logout' });
-await rbac.grantPermission({ principalId: userId, action: 'change-password' });
-await rbac.grantPermission({ principalId: userId, action: 'view-profile' });
+// Group action-only permissions into a role
+const accountUserId = await rbac.role({ name: 'account-user' });
+for (const action of ['logout', 'change-password', 'view-profile']) {
+	const permissionId = await rbac.permission({ action });
+	await rbac.addPermissionToRole({
+		roleId: accountUserId, permissionId,
+	});
+}
+await rbac.assignRole({ principalId: userId, roleId: accountUserId });
 
 // Check authorization
 const canLogout = await rbac.evaluate({
