@@ -73,9 +73,6 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 					},
 				}),
 			});
-			this.container.registerInstance(
-				'repo', db.getQueryRepository({ table: 'iam_rbac_roles' })
-			);
 		}
 
 		get url(): string {
@@ -107,8 +104,13 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 		};
 		await principals.insert({ records: [admin, user] });
 		auth = new RbacAuthorization({ db });
-		await auth.grantPermission({
-			principalId: admin.id, action: 'manage', resource: 'rbac',
+		const roleId = await auth.role({ name: 'rbac-manager' });
+		const permissionId = await auth.permission({
+			action: 'manage', resource: 'rbac',
+		});
+		await auth.addPermissionToRole({ roleId, permissionId });
+		await auth.assignRole({
+			principalId: admin.id, roleId,
 		});
 	});
 
@@ -142,9 +144,9 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 	}
 
 	it('protects the default administration routes', async () => {
-		expect((await request('/rbac/roles/roles')).status).toBe(401);
-		expect((await request('/rbac/roles/roles', 'user')).status).toBe(403);
-		expect((await request('/rbac/roles/roles', 'admin')).status).toBe(200);
+		expect((await request('/rbac/roles')).status).toBe(401);
+		expect((await request('/rbac/roles', 'user')).status).toBe(403);
+		expect((await request('/rbac/roles', 'admin')).status).toBe(200);
 	});
 
 	it('prevents rejected requests from executing protected handlers',
@@ -164,7 +166,7 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 		expect((await request('/health')).status).toBe(200);
 	});
 
-	it('rejects invalid evaluation inputs with 400', async () => {
+	it('rejects invalid evaluation inputs with 422', async () => {
 		for (const body of [
 			{}, { action: 1 }, { action: ' ' }, { action: [] },
 			{ action: 'read', resource: {} },
@@ -172,16 +174,16 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 			{ action: 'read', resource: '' },
 		]) {
 			const response = await request(
-				'/rbac/evaluate/evaluate', 'admin', body
+				'/rbac/evaluate', 'admin', body
 			);
-			expect(response.status).toBe(400);
+			expect(response.status).toBe(422);
 		}
 	});
 
 	it('evaluates the authenticated principal rather than the body identity',
 		async () => {
 			const evaluate = spyOn(auth, 'evaluate').and.callThrough();
-			const response = await request('/rbac/evaluate/evaluate', 'admin', {
+			const response = await request('/rbac/evaluate', 'admin', {
 				action: 'manage', resource: 'rbac', principalId: user.id,
 			});
 			expect(response.status).toBe(201);
@@ -210,7 +212,7 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 	});
 
 	it('returns a policy denial for a valid evaluation request', async () => {
-		const response = await request('/rbac/evaluate/evaluate', 'admin', {
+		const response = await request('/rbac/evaluate', 'admin', {
 			action: 'ungranted-action',
 		});
 		expect(response.status).toBe(201);
@@ -229,7 +231,7 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 				return { allowed: true };
 			});
 			const response = await request(
-				'/rbac/evaluate/evaluate',
+				'/rbac/evaluate',
 				'admin',
 				{ action: 'backend-failure' }
 			);
@@ -253,7 +255,7 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 					return { allowed: true };
 				}
 			);
-			const response = await request('/rbac/evaluate/evaluate', 'admin', {
+			const response = await request('/rbac/evaluate', 'admin', {
 				action: 'fail',
 			});
 			expect(response.status).toBe(400);

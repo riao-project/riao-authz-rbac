@@ -111,14 +111,28 @@ describe('Real OAuth2 driver and RBAC HTTP integration', () => {
 	it('enforces access using a real issued token', async () => {
 		expect((await request(token)).status).toBe(403);
 		expect(handled).toBe(0);
-		await authz.grantPermission({
-			principalId, action: 'read', resource: 'documents',
+		const roleId = await authz.role({ name: 'document-reader' });
+		const permissionId = await authz.permission({
+			action: 'read', resource: 'documents',
+		});
+		await authz.addPermissionToRole({ roleId, permissionId });
+		await authz.assignRole({
+			principalId, roleId,
 		});
 		const response = await request(token);
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ principalId });
 		expect(handled).toBe(1);
-		await authz.revokePermission({ principalId, action: 'read' });
+		const assignment = await authz.principalRolesRepo.findOne({
+			where: { principal_id: principalId, role_id: roleId },
+		});
+		if (!assignment) {
+			throw new Error('Expected the principal role assignment');
+		}
+		await authz.principalRolesRepo.update({
+			where: { id: assignment.id },
+			set: { deactivate_timestamp: new Date() },
+		});
 	});
 
 	it('rejects invalid, revoked, and inactive identities', async () => {

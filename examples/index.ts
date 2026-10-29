@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Database, MigrationRunner } from '@riao/dbal';
+import { Authentication, Principal } from '@riao/iam';
 import { AuthMigrations } from '@riao/iam/auth/auth-migrations';
 import {
 	ApiRequest,
@@ -10,7 +11,11 @@ import {
 	RestServer,
 } from 'api-machine';
 import { maindb } from '../database/main';
-import { AuthzRbacMigrations, RbacAuthorization } from '../src';
+import {
+	AuthzRbacMigrations,
+	DefaultRbacAuthzRouter,
+	RbacAuthorization,
+} from '../src';
 
 export class DocumentsEndpoint extends BaseApiEndpoint {
 	override path = '/documents';
@@ -33,7 +38,11 @@ export class PublicHealthEndpoint extends BaseApiEndpoint {
 
 class Router extends BaseApiRouter {
 	async routes() {
-		return [DocumentsEndpoint, PublicHealthEndpoint];
+		return [
+			DefaultRbacAuthzRouter,
+			DocumentsEndpoint,
+			PublicHealthEndpoint,
+		];
 	}
 }
 
@@ -55,6 +64,12 @@ export class RbacExampleServer extends RestServer {
 	}
 }
 
+class ExampleAuthentication extends Authentication<Principal> {
+	override async authenticate(): Promise<Principal | null> {
+		return null;
+	}
+}
+
 async function runExample(): Promise<void> {
 	const port = Number(process.env['RBAC_EXAMPLE_PORT'] ?? 3000);
 	if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -69,27 +84,39 @@ async function runExample(): Promise<void> {
 		await migrations.run({ auth: new AuthMigrations() });
 		await migrations.run({ rbac: new AuthzRbacMigrations() });
 
-		const principalId = randomUUID();
+		const iam = new ExampleAuthentication({ db: maindb });
+		const principalId = String(await iam.createPrincipal({
+			type: 'service',
+			login: `rbac-example-${randomUUID()}`,
+			name: 'RBAC Example Service',
+		}));
 		const token = randomUUID();
-		const principals = maindb.getQueryRepository({
-			table: 'iam_principals',
-			identifiedBy: 'id',
-		});
-		await principals.insertOne({
-			record: {
-				id: principalId,
-				type: 'service',
-				login: `rbac-example-${principalId}`,
-				name: 'RBAC Example Service',
-				create_timestamp: new Date(),
-			},
-		});
 
 		const authorization = new RbacAuthorization({ db: maindb });
-		await authorization.grantPermission({
-			principalId,
-			action: 'read',
-			resource: 'documents',
+		const documentReaderId = await authorization.role({
+			name: 'document-reader',
+		});
+		const readDocumentsId = await authorization.permission({
+			action: 'read', resource: 'documents',
+		});
+		await authorization.addPermissionToRole({
+			roleId: documentReaderId, permissionId: readDocumentsId,
+		});
+		await authorization.assignRole({
+			principalId, roleId: documentReaderId,
+		});
+
+		const rbacManagerId = await authorization.role({
+			name: 'rbac-manager',
+		});
+		const manageRbacId = await authorization.permission({
+			action: 'manage', resource: 'rbac',
+		});
+		await authorization.addPermissionToRole({
+			roleId: rbacManagerId, permissionId: manageRbacId,
+		});
+		await authorization.assignRole({
+			principalId, roleId: rbacManagerId,
 		});
 
 		const server = new RbacExampleServer(
@@ -124,7 +151,10 @@ async function runExample(): Promise<void> {
 		/* eslint-disable-next-line no-console */
 		console.log(`Demo bearer token: ${token}`);
 		/* eslint-disable-next-line no-console */
-		console.log('Try GET /health and GET /documents with that token.');
+		console.log(
+			'Try GET /health, GET /documents, and GET /rbac/roles ' +
+			'with that token.'
+		);
 	}
 	catch (error) {
 		await maindb.disconnect();
