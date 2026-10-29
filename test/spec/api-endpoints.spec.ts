@@ -3,6 +3,7 @@ import { Database } from '@riao/dbal';
 import { DependencyContainer } from 'hidi';
 import { Principal } from '@riao/iam/auth';
 import { UnauthorizedError } from 'api-machine';
+import { RiaoEndpoint } from '@riao/rest';
 import { AuthMigrations } from '@riao/iam/auth/auth-migrations';
 import {
 	DefaultRbacAuthzRouter,
@@ -72,82 +73,130 @@ describe('RBAC Authorization API Endpoints', () => {
 
 		const container = new DependencyContainer();
 		container.registerInstance(RBAC_AUTHORIZATION_KEY, auth);
-		container.registerInstance('repo', {} as any); // Mock repo to satisfy base endpoint constraints
 
 		// Initialize endpoints and assign auth dependency
 		createRoleEndpoint = new CreateRoleEndpoint();
-		createRoleEndpoint.container = container;
+		createRoleEndpoint.container.setParent(container);
 		createRoleEndpoint.inject();
 
 		getRolesEndpoint = new GetRolesEndpoint();
-		getRolesEndpoint.container = container;
+		getRolesEndpoint.container.setParent(container);
 		getRolesEndpoint.inject();
 
 		getRoleEndpoint = new GetRoleEndpoint();
-		getRoleEndpoint.container = container;
+		getRoleEndpoint.container.setParent(container);
 		getRoleEndpoint.inject();
 
 		updateRoleEndpoint = new UpdateRoleEndpoint();
-		updateRoleEndpoint.container = container;
+		updateRoleEndpoint.container.setParent(container);
 		updateRoleEndpoint.inject();
 
 		deleteRoleEndpoint = new DeleteRoleEndpoint();
-		deleteRoleEndpoint.container = container;
+		deleteRoleEndpoint.container.setParent(container);
 		deleteRoleEndpoint.inject();
 
 		createPermissionEndpoint = new CreatePermissionEndpoint();
-		createPermissionEndpoint.container = container;
+		createPermissionEndpoint.container.setParent(container);
 		createPermissionEndpoint.inject();
 
 		getPermissionsEndpoint = new GetPermissionsEndpoint();
-		getPermissionsEndpoint.container = container;
+		getPermissionsEndpoint.container.setParent(container);
 		getPermissionsEndpoint.inject();
 
 		getPermissionEndpoint = new GetPermissionEndpoint();
-		getPermissionEndpoint.container = container;
+		getPermissionEndpoint.container.setParent(container);
 		getPermissionEndpoint.inject();
 
 		updatePermissionEndpoint = new UpdatePermissionEndpoint();
-		updatePermissionEndpoint.container = container;
+		updatePermissionEndpoint.container.setParent(container);
 		updatePermissionEndpoint.inject();
 
 		deletePermissionEndpoint = new DeletePermissionEndpoint();
-		deletePermissionEndpoint.container = container;
+		deletePermissionEndpoint.container.setParent(container);
 		deletePermissionEndpoint.inject();
 
 		addPermissionEndpoint = new AddPermissionToRoleEndpoint();
-		addPermissionEndpoint.container = container;
+		addPermissionEndpoint.container.setParent(container);
 		addPermissionEndpoint.inject();
 
 		getRolePermissionsEndpoint = new GetRolePermissionsEndpoint();
-		getRolePermissionsEndpoint.container = container;
+		getRolePermissionsEndpoint.container.setParent(container);
 		getRolePermissionsEndpoint.inject();
 
 		removePermissionEndpoint = new RemovePermissionFromRoleEndpoint();
-		removePermissionEndpoint.container = container;
+		removePermissionEndpoint.container.setParent(container);
 		removePermissionEndpoint.inject();
 
 		assignRoleEndpoint = new AssignRoleToPrincipalEndpoint();
-		assignRoleEndpoint.container = container;
+		assignRoleEndpoint.container.setParent(container);
 		assignRoleEndpoint.inject();
 
 		removeRoleEndpoint = new RemoveRoleFromPrincipalEndpoint();
-		removeRoleEndpoint.container = container;
+		removeRoleEndpoint.container.setParent(container);
 		removeRoleEndpoint.inject();
 
 		getPrincipalRolesEndpoint = new GetPrincipalRolesEndpoint();
-		getPrincipalRolesEndpoint.container = container;
+		getPrincipalRolesEndpoint.container.setParent(container);
 		getPrincipalRolesEndpoint.inject();
 
 		evaluateEndpoint = new EvaluateAuthorizationEndpoint();
-		evaluateEndpoint.container = container;
+		evaluateEndpoint.container.setParent(container);
 		evaluateEndpoint.inject();
+	});
+
+	it('injects each CRUD endpoint with its domain repository', () => {
+		const groups = [
+			{
+				repo: auth.rolesRepo,
+				endpoints: [
+					createRoleEndpoint, getRolesEndpoint, getRoleEndpoint,
+					updateRoleEndpoint, deleteRoleEndpoint,
+				],
+			},
+			{
+				repo: auth.permissionsRepo,
+				endpoints: [
+					createPermissionEndpoint, getPermissionsEndpoint,
+					getPermissionEndpoint, updatePermissionEndpoint,
+					deletePermissionEndpoint,
+				],
+			},
+			{
+				repo: auth.rolePermissionsRepo,
+				endpoints: [
+					addPermissionEndpoint, getRolePermissionsEndpoint,
+					removePermissionEndpoint,
+				],
+			},
+			{
+				repo: auth.principalRolesRepo,
+				endpoints: [
+					assignRoleEndpoint, removeRoleEndpoint,
+					getPrincipalRolesEndpoint,
+				],
+			},
+		];
+		for (const { repo, endpoints } of groups) {
+			for (const endpoint of endpoints) {
+				expect(endpoint instanceof RiaoEndpoint).toBeTrue();
+				expect(endpoint.repo).toBe(repo);
+				const parent = new DependencyContainer();
+				parent.registerInstance(RBAC_AUTHORIZATION_KEY, auth);
+				const unrelatedRepo = {};
+				parent.registerInstance('repo', unrelatedRepo);
+				endpoint.container = new DependencyContainer();
+				endpoint.container.setParent(parent);
+				endpoint.inject();
+				expect(endpoint.repo).toBe(repo);
+				expect(parent.require('repo')).toBe(unrelatedRepo);
+			}
+		}
+		expect(evaluateEndpoint instanceof RiaoEndpoint).toBeFalse();
 	});
 
 	it('should cascade the authorization service into the RBAC route tree', async () => {
 		const container = new DependencyContainer();
 		container.registerInstance(RBAC_AUTHORIZATION_KEY, auth);
-		container.registerInstance('repo', {} as any);
 
 		const router = new DefaultRbacAuthzRouter();
 		router.container.setParent(container);

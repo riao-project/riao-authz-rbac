@@ -2,27 +2,36 @@ import { RiaoCreateEndpoint, DatabaseRecordWithId } from '@riao/rest';
 import { ApiRequest } from 'api-machine';
 import { RbacAuthorization } from '../../authz-rbac';
 import { RBAC_AUTHORIZATION_KEY } from '../authz-key';
+import { MinLengthValidator, ObjectValSan } from 'valsan';
 
 /**
  * POST /roles/:roleId/permissions - Add permission to role
  */
-export class AddPermissionToRoleEndpoint extends RiaoCreateEndpoint<
- DatabaseRecordWithId
-> {
-	public override path = '/roles/:roleId/permissions';
+export class AddPermissionToRoleEndpoint extends RiaoCreateEndpoint<DatabaseRecordWithId> {
+	public override path = '/:roleId/permissions';
 	public override description = 'Add a permission to an RBAC role';
 
 	protected auth: RbacAuthorization;
+
+	public override params = new ObjectValSan({
+		schema: { roleId: new MinLengthValidator({ minLength: 1 }) },
+	});
+	public override paramsExample = { roleId: 'role-123' };
+
+	public override body = new ObjectValSan({
+		schema: { permissionId: new MinLengthValidator({ minLength: 1 }) },
+	});
 
 	public override bodyExample = {
 		permissionId: 'perm-123',
 	};
 
 	public override inject() {
-		super.inject();
 		this.auth = this.container.require<RbacAuthorization>(
 			RBAC_AUTHORIZATION_KEY
 		);
+		this.container.registerInstance('repo', this.auth.rolePermissionsRepo);
+		super.inject();
 	}
 
 	public override async handle(request: ApiRequest): Promise<Partial<DatabaseRecordWithId>> {

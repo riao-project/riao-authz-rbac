@@ -13,6 +13,7 @@ import {
 import { maindb } from '../database/main';
 import {
 	AuthzRbacMigrations,
+	DefaultRbacAuthzRouter,
 	RbacAuthorization,
 } from '../src';
 
@@ -37,7 +38,11 @@ export class PublicHealthEndpoint extends BaseApiEndpoint {
 
 class Router extends BaseApiRouter {
 	async routes() {
-		return [DocumentsEndpoint, PublicHealthEndpoint];
+		return [
+			DefaultRbacAuthzRouter,
+			DocumentsEndpoint,
+			PublicHealthEndpoint,
+		];
 	}
 }
 
