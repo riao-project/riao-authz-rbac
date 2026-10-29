@@ -27,7 +27,7 @@
 	},
 	"dependencies": {
 		"@riao/dbal": "^3.8.0",
-		"@riao/iam": "^5.0.1",
+		"@riao/iam": "^5.0.2",
 		"@riao/rest": "^3.0.0",
 		"api-machine": "^2.0.2",
 		"hidi": "^3.0.0",

@@ -107,8 +107,13 @@ describe('OAuth2 and RBAC HTTP enforcement', () => {
 		};
 		await principals.insert({ records: [admin, user] });
 		auth = new RbacAuthorization({ db });
-		await auth.grantPermission({
-			principalId: admin.id, action: 'manage', resource: 'rbac',
+		const roleId = await auth.role({ name: 'rbac-manager' });
+		const permissionId = await auth.permission({
+			action: 'manage', resource: 'rbac',
+		});
+		await auth.addPermissionToRole({ roleId, permissionId });
+		await auth.assignRole({
+			principalId: admin.id, roleId,
 		});
 	});
 

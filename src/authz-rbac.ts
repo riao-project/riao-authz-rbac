@@ -46,21 +46,10 @@ export interface RbacPrincipalRole {
 	principal_id: DatabaseRecordId;
 	role_id: DatabaseRecordId;
 	create_timestamp: Date;
-	deactivate_timestamp?: Date;
+	deactivate_timestamp?: Date | null;
 }
 
 export type RbacAuthorizationOptions = AuthorizationOptions;
-
-export interface GrantPermissionOptions {
-	principalId: DatabaseRecordId;
-	action: string;
-	resource?: string;
-}
-
-export interface RevokePermissionOptions {
-	principalId: DatabaseRecordId;
-	action: string;
-}
 
 export interface CheckRolesHavePermissionContext {
 	roleIds: DatabaseRecordId[];
@@ -107,6 +96,105 @@ export class RbacAuthorization extends Authorization<
 				table: 'iam_rbac_principal_roles',
 				identifiedBy: 'id',
 			});
+	}
+
+	public async role(
+		options: { name: string; description?: string }
+	): Promise<DatabaseRecordId> {
+		if (!options.name?.trim()) {
+			throw new TypeError('Role name must be a non-empty string');
+		}
+
+		const existing = await this.rolesRepo.findOne({
+			where: { name: options.name },
+		});
+
+		if (existing) {
+			return existing.id;
+		}
+
+		const { id } = await this.rolesRepo.insertOne({
+			record: { ...options, create_timestamp: new Date() },
+		});
+
+		if (id === undefined) {
+			throw new Error('Role creation returned no ID');
+		}
+
+		return id;
+	}
+
+	public async permission(
+		options: { action: string; resource?: string; description?: string }
+	): Promise<DatabaseRecordId> {
+		if (
+			!options.action?.trim() ||
+			(options.resource !== undefined && !options.resource.trim())
+		) {
+			throw new TypeError(
+				'Permission action and optional resource must be ' +
+				'non-empty strings'
+			);
+		}
+
+		const resource = options.resource ?? null;
+		const existing = await this.permissionsRepo.findOne({
+			where: { action: options.action, resource },
+		});
+
+		if (existing) {
+			return existing.id;
+		}
+
+		const { id } = await this.permissionsRepo.insertOne({
+			record: { ...options, resource, create_timestamp: new Date() },
+		});
+
+		if (id === undefined) {
+			throw new Error('Permission creation returned no ID');
+		}
+
+		return id;
+	}
+
+	public async addPermissionToRole(
+		options: { roleId: DatabaseRecordId; permissionId: DatabaseRecordId }
+	): Promise<void> {
+		const where = {
+			role_id: options.roleId,
+			permission_id: options.permissionId,
+		};
+
+		const existing = await this.rolePermissionsRepo.findOne({ where });
+		if (!existing) {
+			await this.rolePermissionsRepo.insertOne({
+				record: { ...where, create_timestamp: new Date() },
+			});
+		}
+	}
+
+	public async assignRole(
+		options: { principalId: DatabaseRecordId; roleId: DatabaseRecordId }
+	): Promise<void> {
+		const where = {
+			principal_id: options.principalId,
+			role_id: options.roleId,
+		};
+		const existing = await this.principalRolesRepo.findOne({ where });
+
+		if (existing) {
+			if (existing.deactivate_timestamp) {
+				await this.principalRolesRepo.update({
+					where: { id: existing.id },
+					set: { deactivate_timestamp: null },
+				});
+			}
+		}
+		else {
+			await this.principalRolesRepo.insertOne({
+				record: { ...where, create_timestamp: new Date() },
+			});
+		}
 	}
 
 	/**
@@ -160,143 +248,6 @@ export class RbacAuthorization extends Authorization<
 			allowed: false,
 			reason: 'Principal roles do not have required permission',
 		};
-	}
-
-	/**
-	 * Grant a permission to a principal by assigning a role
-	 * In RBAC, permissions are granted through role assignment
-	 * @param options The grant permission options
-	 */
-	public async grantPermission(
-		options: GrantPermissionOptions
-	): Promise<void> {
-		const { principalId, action, resource } = options;
-
-		// Find or create role by action name
-		const role = await this.rolesRepo.findOne({
-			where: { name: action } as KeyValExpression<RbacRole>,
-		});
-
-		let roleId: DatabaseRecordId;
-		if (role) {
-			roleId = role.id;
-		}
-		else {
-			// Create role if it doesn't exist
-			const { id } = await this.rolesRepo.insertOne({
-				record: {
-					name: action,
-					description: `Role for ${action} action`,
-					create_timestamp: new Date(),
-				} as unknown as RbacRole,
-			});
-
-			roleId = id!;
-		}
-
-		// Find or create permission for this action
-		const permission = await this.permissionsRepo.findOne({
-			where: {
-				action,
-				resource: resource || null,
-			} as KeyValExpression<RbacPermission>,
-		});
-
-		let permissionId: DatabaseRecordId;
-		if (permission) {
-			permissionId = permission.id;
-		}
-		else {
-			// Create permission if it doesn't exist
-			const { id } = await this.permissionsRepo.insertOne({
-				record: {
-					action,
-					resource: resource || null,
-					create_timestamp: new Date(),
-				} as unknown as RbacPermission,
-			});
-
-			permissionId = id!;
-		}
-
-		// Assign permission to role
-		await this.rolePermissionsRepo.insertOne({
-			record: {
-				role_id: roleId,
-				permission_id: permissionId,
-				create_timestamp: new Date(),
-			} as unknown as RbacRolePermission,
-		});
-
-		// Check if principal-role assignment already exists
-		// (both active and deactivated)
-		const existingAssignment = await this.principalRolesRepo.findOne({
-			where: {
-				principal_id: principalId,
-				role_id: roleId,
-			} as KeyValExpression<RbacPrincipalRole>,
-		});
-
-		if (existingAssignment) {
-			// If assignment exists but is deactivated, reactivate it
-			if (existingAssignment.deactivate_timestamp) {
-				await this.principalRolesRepo.update({
-					set: { deactivate_timestamp: undefined },
-					where: { id: existingAssignment.id },
-				});
-			}
-			// If assignment is already active, no action needed
-		}
-		else {
-			// Create new assignment if it doesn't exist
-			await this.principalRolesRepo.insertOne({
-				record: {
-					principal_id: principalId,
-					role_id: roleId,
-				} as unknown as RbacPrincipalRole,
-			});
-		}
-	}
-
-	/**
-	 * Revoke a permission from a principal
-	 * In RBAC, permissions are revoked by deactivating role assignment
-	 * @param options The revoke permission options
-	 */
-	public async revokePermission(
-		options: RevokePermissionOptions
-	): Promise<void> {
-		const { principalId, action } = options;
-		// Find role by action name
-		const role = await this.rolesRepo.findOne({
-			where: { name: action } as KeyValExpression<RbacRole>,
-		});
-
-		if (!role) {
-			return; // Role doesn't exist, nothing to revoke
-		}
-
-		const roleId = role.id;
-
-		// Find principal's role assignment
-		const assignment = await this.principalRolesRepo.findOne({
-			where: {
-				principal_id: principalId,
-				role_id: roleId,
-			} as KeyValExpression<RbacPrincipalRole>,
-		});
-
-		if (assignment) {
-			// Deactivate the assignment
-			await this.principalRolesRepo.update({
-				set: {
-					deactivate_timestamp: new Date(),
-				} as Partial<RbacPrincipalRole>,
-				where: {
-					id: assignment.id,
-				} as KeyValExpression<RbacPrincipalRole>,
-			});
-		}
 	}
 
 	/**

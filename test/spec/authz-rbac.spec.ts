@@ -75,6 +75,84 @@ describe('RBAC Authorization', () => {
 			})) as Principal;
 	});
 
+	describe('named role management', () => {
+		it('omits direct permission shortcuts', () => {
+			expect('grantPermission' in rbac).toBeFalse();
+			expect('revokePermission' in rbac).toBeFalse();
+		});
+
+		it('reuses roles, permissions, links, and principal assignments', async () => {
+			const name = `administrator_${testPrincipalId}`;
+			const roleId = await rbac.role({ name });
+			expect(await rbac.role({ name })).toBe(roleId);
+			const options = { action: 'manage', resource: name };
+			const permissionId = await rbac.permission(options);
+			expect(await rbac.permission(options))
+				.toBe(permissionId);
+
+			for (let attempt = 0; attempt < 2; attempt++) {
+				await rbac.addPermissionToRole({ roleId, permissionId });
+				await rbac.assignRole({
+					roleId, principalId: testPrincipalId,
+				});
+			}
+			expect((await rolePermissionsRepo.find({
+				where: { role_id: roleId, permission_id: permissionId },
+			})).length).toBe(1);
+			expect((await principalRolesRepo.find({
+				where: { principal_id: testPrincipalId, role_id: roleId },
+			})).length).toBe(1);
+			expect(await rbac.isAuthorized({
+				principal: testPrincipal, ...options,
+			})).toBeTrue();
+		});
+
+		it('reactivates an assignment without creating a duplicate', async () => {
+			const roleId = await rbac.role({
+				name: `reactivate_${testPrincipalId}`,
+			});
+			const permissionId = await rbac.permission({
+				action: 'reactivate', resource: testPrincipalId,
+			});
+			await rbac.addPermissionToRole({ roleId, permissionId });
+			await rbac.assignRole({ roleId, principalId: testPrincipalId });
+			const where = { role_id: roleId, principal_id: testPrincipalId };
+			await principalRolesRepo.update({
+				where, set: { deactivate_timestamp: new Date() },
+			});
+			await rbac.assignRole({ roleId, principalId: testPrincipalId });
+			const assignments = await principalRolesRepo.find({ where });
+			expect(assignments.length).toBe(1);
+			expect(assignments[0].deactivate_timestamp).toBeNull();
+			expect(await rbac.isAuthorized({
+				principal: testPrincipal,
+				action: 'reactivate', resource: testPrincipalId,
+			})).toBeTrue();
+		});
+
+		it('fails explicitly if an inserted record has no ID', async () => {
+			spyOn(rolesRepo, 'insertOne').and.resolveTo({});
+			await expectAsync(rbac.role({
+				name: `no_id_${testPrincipalId}`,
+			})).toBeRejectedWithError('Role creation returned no ID');
+			spyOn(permissionsRepo, 'insertOne').and.resolveTo({});
+			await expectAsync(rbac.permission({
+				action: 'missing-id', resource: testPrincipalId,
+			})).toBeRejectedWithError('Permission creation returned no ID');
+		});
+
+		it('preserves database failures and rejects empty policy names', async () => {
+			await expectAsync(rbac.role({ name: ' ' }))
+				.toBeRejectedWithError(TypeError);
+			await expectAsync(rbac.permission({ action: ' ' }))
+				.toBeRejectedWithError(TypeError);
+			const failure = new Error('Database unavailable');
+			spyOn(rolesRepo, 'findOne').and.rejectWith(failure);
+			await expectAsync(rbac.role({ name: 'admin' }))
+				.toBeRejectedWith(failure);
+		});
+	});
+
 	describe('evaluate()', () => {
 		it('should deny access when principal has no roles', async () => {
 			const result = await rbac.evaluate({
@@ -409,300 +487,6 @@ describe('RBAC Authorization', () => {
 			});
 
 			expect(authorized).toBe(false);
-		});
-	});
-
-	describe('grantPermission()', () => {
-		it('should create role and assign to principal', async () => {
-			const action = 'admin_' + Date.now();
-
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Verify role was created
-			const role = await rolesRepo.findOne({
-				where: { name: action },
-			});
-
-			expect(role).toBeDefined();
-			expect(role?.name).toBe(action);
-
-			// Verify assignment was created
-			const assignment = await principalRolesRepo.findOne({
-				where: {
-					principal_id: testPrincipalId,
-					role_id: role?.id,
-				},
-			});
-
-			expect(assignment).toBeDefined();
-		});
-
-		it('should reuse existing role', async () => {
-			const action = 'existing_' + Date.now();
-
-			// Create role first
-			await rolesRepo.insertOne({
-				record: {
-					name: action,
-					create_timestamp: new Date(),
-				},
-			});
-
-			// Grant permission using existing role
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Verify only one role
-			const roles = await rolesRepo.find({
-				where: { name: action },
-			});
-
-			expect((roles ?? []).length).toBe(1);
-		});
-
-		it('should handle duplicate assignments', async () => {
-			const action = 'dup_' + Date.now();
-
-			// Grant twice
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Should succeed without error
-			expect(true).toBe(true);
-		});
-
-		it('should create multiple roles for different actions', async () => {
-			const action1 = 'action1_' + Date.now();
-			const action2 = 'action2_' + Date.now();
-
-			// Grant two different permissions
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action: action1,
-			});
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action: action2,
-			});
-
-			// Verify both roles exist
-			const roles = await rolesRepo.find({});
-
-			const roleNames = (roles ?? []).map((r) => r.name);
-			expect(roleNames).toContain(action1);
-			expect(roleNames).toContain(action2);
-		});
-
-		it('restores assignment granting revoked permission', async () => {
-			const action = 'restore_' + Date.now();
-
-			// Grant permission
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Revoke it
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Grant again
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Should have active assignment
-			const role = await rolesRepo.findOne({
-				where: { name: action },
-			});
-
-			const activeAssignment = await principalRolesRepo.findOne({
-				where: {
-					principal_id: testPrincipalId,
-					role_id: role?.id,
-					deactivate_timestamp: null,
-				},
-			});
-
-			expect(activeAssignment).toBeDefined();
-		});
-	});
-
-	describe('revokePermission()', () => {
-		it('should deactivate role assignment', async () => {
-			const action = 'revoke_' + Date.now();
-
-			// Grant permission
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Revoke permission
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Verify assignment was deactivated
-			const role = await rolesRepo.findOne({
-				where: { name: action },
-			});
-
-			const assignment = await principalRolesRepo.findOne({
-				where: {
-					principal_id: testPrincipalId,
-					role_id: role?.id,
-				},
-			});
-
-			expect(assignment?.['deactivate_timestamp']).not.toBeNull();
-		});
-
-		it('should handle non-existent role', async () => {
-			// Should not throw
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action: 'nonexistent',
-			});
-			expect(true).toBe(true);
-		});
-
-		it('should prevent access after revocation', async () => {
-			const action = 'revoked_' + Date.now();
-			const resource = 'data_' + Date.now();
-
-			// Create permission
-			const permInserted = await permissionsRepo.insertOne({
-				record: {
-					action,
-					resource,
-					create_timestamp: new Date(),
-				},
-			});
-			const permId = (permInserted as unknown as { id: string }).id;
-
-			// Create role
-			const roleInserted = await rolesRepo.insertOne({
-				record: {
-					name: action,
-					create_timestamp: new Date(),
-				},
-			});
-			const roleId = (roleInserted as unknown as { id: string }).id;
-
-			// Assign permission to role
-			await rolePermissionsRepo.insertOne({
-				record: {
-					role_id: roleId,
-					permission_id: permId,
-					create_timestamp: new Date(),
-				},
-			});
-
-			// Assign role to principal
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Verify access before revocation
-			let authorized = await rbac.isAuthorized({
-				principal: testPrincipal,
-				action,
-				resource,
-			});
-			expect(authorized).toBe(true);
-
-			// Revoke permission
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Verify access after revocation
-			authorized = await rbac.isAuthorized({
-				principal: testPrincipal,
-				action,
-				resource,
-			});
-			expect(authorized).toBe(false);
-		});
-
-		it('is idempotent revoking already revoked permission', async () => {
-			const action = 'idempotent_' + Date.now();
-
-			// Grant permission
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Revoke twice
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action,
-			});
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action,
-			});
-
-			// Should not throw and permission should be revoked
-			const authorized = await rbac.isAuthorized({
-				principal: testPrincipal,
-				action: action,
-			});
-			expect(authorized).toBe(false);
-		});
-
-		it('should only deactivate specific role assignment', async () => {
-			const action1 = 'role1_' + Date.now();
-			const action2 = 'role2_' + Date.now();
-
-			// Grant two permissions to principal
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action: action1,
-			});
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action: action2,
-			});
-
-			// Revoke only first permission
-			await rbac.revokePermission({
-				principalId: testPrincipalId,
-				action: action1,
-			});
-
-			// First should be denied
-			let authorized = await rbac.isAuthorized({
-				principal: testPrincipal,
-				action: action1,
-			});
-			expect(authorized).toBe(false);
-
-			// Second should be allowed
-			authorized = await rbac.isAuthorized({
-				principal: testPrincipal,
-				action: action2,
-			});
-			expect(authorized).toBe(true);
 		});
 	});
 
@@ -1538,109 +1322,5 @@ describe('RBAC Authorization', () => {
 		});
 	});
 
-	describe('grantPermission() with Resource', () => {
-		it('grants permission with explicit resource parameter', async () => {
-			const action = 'edit_' + Date.now();
-			const resource = 'documents_' + Date.now();
 
-			// Grant permission with resource
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-				resource,
-			});
-
-			// Verify permission was created with the resource
-			const permission = await permissionsRepo.findOne({
-				where: {
-					action,
-					resource,
-				},
-			});
-
-			expect(permission).toBeDefined();
-			expect(permission?.action).toBe(action);
-			expect(permission?.resource).toBe(resource);
-
-			// Verify role was created and assigned
-			const role = await rolesRepo.findOne({
-				where: { name: action },
-			});
-
-			expect(role).toBeDefined();
-
-			const assignment = await principalRolesRepo.findOne({
-				where: {
-					principal_id: testPrincipalId,
-					role_id: role?.id,
-				},
-			});
-
-			expect(assignment).toBeDefined();
-		});
-
-		it('should reuse existing permission with resource', async () => {
-			const action = 'create_' + Date.now();
-			const resource = 'posts_' + Date.now();
-
-			// Create permission manually first
-			await permissionsRepo.insertOne({
-				record: {
-					action,
-					resource,
-					create_timestamp: new Date(),
-				},
-			});
-
-			// Grant permission using same action and resource
-			await rbac.grantPermission({
-				principalId: testPrincipalId,
-				action,
-				resource,
-			});
-
-			// Verify only one permission exists
-			const permissions = await permissionsRepo.find({
-				where: {
-					action,
-					resource,
-				},
-			});
-
-			expect((permissions ?? []).length).toBe(1);
-		});
-
-		it(
-			'should allow authorization with ' + 'resource-specific permission',
-			async () => {
-				const action = 'delete_' + Date.now();
-				const resource = 'comments_' + Date.now();
-
-				// Grant permission with specific resource
-				await rbac.grantPermission({
-					principalId: testPrincipalId,
-					action,
-					resource,
-				});
-
-				// Should be authorized for the specific resource
-				const authorized = await rbac.isAuthorized({
-					principal: testPrincipal,
-					action,
-					resource,
-				});
-
-				expect(authorized).toBe(true);
-
-				// Should not be authorized for different resource
-				const notAuthorized = await rbac.isAuthorized({
-					principal: testPrincipal,
-					action,
-					resource: 'different_' + Date.now(),
-				});
-
-				expect(notAuthorized).toBe(false);
-			}
-		);
-	});
 });
